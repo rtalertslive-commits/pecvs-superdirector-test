@@ -504,6 +504,8 @@
         /* ═══ SUPRADIRECTOR: read-only — ocultar TODOS los controles de escritura ═══ */
         body.supra-readonly #tsub-btn-puntos,
         body.supra-readonly #tsub-puntos,
+        body.supra-readonly #tsub-btn-solicitudes,
+        body.supra-readonly #tsub-solicitudes,
         body.supra-readonly button[onclick="addCatalogItem()"],
         body.supra-readonly button[onclick*="aprobarCanje"],
         body.supra-readonly button[onclick*="rechazarCanje"],
@@ -519,6 +521,10 @@
         /* Form completo de "Nuevo Item" en catálogos: ocultar */
         body.supra-readonly #tsub-catalogo > .card:first-of-type {
             display: none !important;
+        }
+        /* Default sub-tab de Tienda en supra: arrancar en Catálogos (Puntos está oculto) */
+        body.supra-readonly #tsub-catalogo {
+            display: block !important;
         }
         /* Selector de región del supradirector */
         .supra-region-selector {
@@ -3172,6 +3178,11 @@
                 const lastWeek = Math.max(...entriesLastMes.map(e => parseInt(e.semana)));
                 document.getElementById('lb-sem-filter').value = lastWeek;
             }
+
+            // Re-render con los filtros recién seteados (sin esto el leaderboard
+            // mostraría TODO el histórico aunque visualmente muestre la última
+            // semana — el render previo de refreshAll() corrió antes de setear filtros)
+            if (typeof renderLeaderboard === 'function') renderLeaderboard();
         }
 
         // ─── LEADERBOARD ──────────────────────────────────────────────────────────────
