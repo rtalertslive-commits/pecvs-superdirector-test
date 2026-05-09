@@ -1888,34 +1888,24 @@
         </div>
     </div>
 
-    <!-- CONFIG MODAL -->
+    <!-- CONFIG MODAL — supradirector: solo lectura, nombre + email -->
     <div class="modal-overlay" id="config-modal">
-        <div class="modal-box">
+        <div class="modal-box" style="max-width:380px;">
             <button class="modal-close" onclick="closeConfig()">&times;</button>
-            <h2><i class="fa fa-cog"></i> Configuración</h2>
-            <div style="display:flex;flex-direction:column;gap:20px;">
+            <h2><i class="fa fa-cog"></i> Mi Cuenta</h2>
+            <div style="display:flex;flex-direction:column;gap:14px;margin-top:10px;">
                 <div>
-                    <label class="field-label">Nombre del Director</label>
-                    <input type="text" id="inp-director" placeholder="Tu nombre">
+                    <div style="font-size:10px;color:var(--slate);text-transform:uppercase;letter-spacing:1.5px;font-weight:700;margin-bottom:4px;">Nombre</div>
+                    <div id="disp-myname" style="font-size:15px;font-weight:700;color:var(--white);">—</div>
                 </div>
                 <div>
-                    <label class="field-label">Tu Código de Director (compártelo con tus promotores)</label>
-                    <input type="text" id="inp-teamcode" placeholder="Ej. TEAM-DIRECTOR">
-                    <p style="font-size:10px; color:var(--slate); margin-top:5px;">Los promotores ingresan este código en su webapp para vincularse a ti.</p>
+                    <div style="font-size:10px;color:var(--slate);text-transform:uppercase;letter-spacing:1.5px;font-weight:700;margin-bottom:4px;">Email</div>
+                    <div id="disp-myemail" style="font-size:13px;color:var(--gold-l);">—</div>
                 </div>
                 <div>
-                    <label class="field-label">Tu Región / Estado</label>
-                    <input type="text" id="inp-region" placeholder="Ej. Tamaulipas">
-                    <p style="font-size:10px; color:var(--slate); margin-top:5px;">Identifica tu zona. Aparece en el dropdown que ven los vendedores al registrarse.</p>
+                    <div style="font-size:10px;color:var(--slate);text-transform:uppercase;letter-spacing:1.5px;font-weight:700;margin-bottom:4px;">Acceso</div>
+                    <div style="font-size:13px;color:var(--gold);font-weight:700;">🌎 Vista Nacional · Solo lectura</div>
                 </div>
-                <div>
-                    <p class="section-label">Promotores en tu Equipo</p>
-                    <div class="agent-list" id="agent-list"></div>
-                    <p style="font-size:10px; color:var(--slate); margin-top:5px;">Los coaches que ingresen tu código
-                        aparecerán aquí automáticamente.</p>
-                </div>
-                <button class="btn btn-green" onclick="saveConfig()"><i class="fa fa-floppy-disk"></i>Guardar
-                    configuración</button>
             </div>
         </div>
     </div><!-- /config-modal -->
@@ -2929,14 +2919,14 @@
         }
 
         // ─── CONFIG ──────────────────────────────────────────────────────────────────
+        // Supradirector: solo muestra nombre + email read-only. NO permite editar
+        // directorCode ni región — el supradirector no tiene "su" región, navega
+        // entre las de los directores via el selector del header.
         window.openConfig = function () {
-            const inpDirector = document.getElementById('inp-director');
-            const inpTeamCode = document.getElementById('inp-teamcode');
-            const inpRegion   = document.getElementById('inp-region');
-            if (inpDirector) inpDirector.value = state.directorName || '';
-            if (inpTeamCode) inpTeamCode.value = state.directorCode || '';
-            if (inpRegion)   inpRegion.value   = state.regionName   || '';
-            renderPromotorList();
+            const nameEl = document.getElementById('disp-myname');
+            const emailEl = document.getElementById('disp-myemail');
+            if (nameEl)  nameEl.textContent  = state.directorName || (user && user.displayName) || '—';
+            if (emailEl) emailEl.textContent = (user && user.email) || '—';
             document.getElementById('config-modal').classList.add('open');
         }
 
