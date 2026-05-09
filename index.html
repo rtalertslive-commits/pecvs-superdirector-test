@@ -2125,9 +2125,13 @@
 
         // ─── SUPRADIRECTOR: regiones disponibles ───
         // Editar este array si se agregan nuevos directores regionales en el futuro.
+        // Códigos verificados en pecvs-testnet con _list-testnet-directors.js:
+        //   1000 = Franco (Tamaulipas), 2000 = Ruben (Chihuahua)
+        // En mainnet (bitacora-agente) los códigos pueden ser distintos — revisar
+        // antes de portar.
         const SUPRA_REGIONS = [
-            { code: '9999', label: 'Tamaulipas' },
-            { code: '9998', label: 'Chihuahua' }
+            { code: '1000', label: 'Tamaulipas' },
+            { code: '2000', label: 'Chihuahua' }
         ];
 
         function renderSupraRegionSelector() {
@@ -2192,8 +2196,8 @@
                 // Default region: Tamaulipas (9999). El usuario cambia con el selector.
                 // Cuando state.directorCode es '9999' → ve Tamaulipas. '9998' → Chihuahua.
                 // 'NACIONAL' (futuro) → query sin filtro (mediante state.isSupradirector).
-                state.directorCode = sessionStorage.getItem('supraRegion') || '9999';
-                state.regionName = state.directorCode === '9998' ? 'Chihuahua' : 'Tamaulipas';
+                state.directorCode = sessionStorage.getItem('supraRegion') || '1000';
+                state.regionName = state.directorCode === '2000' ? 'Chihuahua' : 'Tamaulipas';
                 renderSupraRegionSelector();
                 startListeningPromotores();
                 init();
