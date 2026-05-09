@@ -493,13 +493,70 @@
                 color: var(--white); font-size: 16px;
                 display: block; margin-bottom: 6px;
             }
+            /* En el supradirector solo Bitácora/Reportes/Conceptos están ocultas
+               (esos tabs no existen en este app); Tesorería SÍ es visible en mobile */
             #tab-bitacora .card,
             #tab-reporte .card,
             #tab-reporte-promotores .card,
-            #tab-tesoreria .card,
             #tab-conceptos .card { display: none; }
+        }
 
-            /* ═══ Gestión de Equipo Activo: layout stack en mobile ═══ */
+        /* ═══ SUPRADIRECTOR: read-only — ocultar TODOS los controles de escritura ═══ */
+        body.supra-readonly #tsub-btn-puntos,
+        body.supra-readonly #tsub-puntos,
+        body.supra-readonly button[onclick="addCatalogItem()"],
+        body.supra-readonly button[onclick*="aprobarCanje"],
+        body.supra-readonly button[onclick*="rechazarCanje"],
+        body.supra-readonly button[onclick*="deleteCatalogItem"],
+        body.supra-readonly button[onclick*="editCatalogItem"],
+        body.supra-readonly button[onclick*="toggleActivo"],
+        body.supra-readonly button[onclick*="openTesAction"],
+        body.supra-readonly button[onclick*="mintTotopos"],
+        body.supra-readonly button[onclick*="burnTotopos"],
+        body.supra-readonly button[onclick*="confirmTesAction"] {
+            display: none !important;
+        }
+        /* Form completo de "Nuevo Item" en catálogos: ocultar */
+        body.supra-readonly #tsub-catalogo > .card:first-of-type {
+            display: none !important;
+        }
+        /* Selector de región del supradirector */
+        .supra-region-selector {
+            display: flex;
+            gap: 6px;
+            margin: 10px 0 16px;
+            padding: 5px;
+            background: linear-gradient(135deg, rgba(20, 30, 48, 0.95) 0%, rgba(36, 28, 18, 0.92) 100%);
+            border: 1.5px solid var(--gold);
+            border-radius: 12px;
+            box-shadow: 0 4px 14px rgba(212, 175, 55, 0.2);
+        }
+        .supra-region-btn {
+            flex: 1;
+            padding: 10px 8px;
+            background: transparent;
+            border: 1px solid transparent;
+            border-radius: 8px;
+            color: var(--slate);
+            font-size: 12px;
+            font-weight: 700;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            transition: 0.15s;
+        }
+        .supra-region-btn:hover {
+            color: var(--gold-l);
+            background: rgba(212, 175, 55, 0.08);
+        }
+        .supra-region-btn.active {
+            color: var(--bg);
+            background: linear-gradient(135deg, var(--gold-l) 0%, var(--gold) 50%, #a08015 100%);
+            box-shadow: 0 2px 8px rgba(212, 175, 55, 0.3), inset 0 1px 0 rgba(255,255,255,0.2);
+        }
+        @media (max-width: 767px) {
+            /* ═══ Gestión de Equipo Activo: layout stack en mobile (legacy del director, no usado en supra) ═══ */
             /* El header de columnas (5-col grid) no hace sentido apilado, lo escondo */
             #tab-gestion .card > div[style*="grid-template-columns:2fr 80px"] {
                 display: none !important;
@@ -1263,7 +1320,8 @@
                     </div>
                 </div>
                 <p id="director-display">Superdirector</p>
-                <p id="team-display" style="font-size:11px; color:var(--gold); font-weight:700; margin-top:2px;">🌎 Vista Nacional · Tamaulipas + Chihuahua</p>
+                <p id="team-display" style="font-size:11px; color:var(--gold); font-weight:700; margin-top:2px;">🌎 Vista Nacional</p>
+                <div id="supra-region-selector-host" style="margin-top:8px; max-width:340px;"></div>
             </div>
             <div class="header-right">
                 <button class="btn btn-sm" onclick="openConfig()"><i class="fa fa-cog"></i> Configuración</button>
@@ -1599,15 +1657,10 @@
 
         <!-- ═══════════════════ TAB: TESORERÍA ═══════════════════ -->
         <div id="tab-tesoreria" class="tab-panel">
-            <div class="desktop-only-msg">
-                <i class="fa fa-desktop"></i>
-                <strong>Solo en computadora</strong>
-                Tesorería tiene tablas y acciones que se ven mejor en pantalla grande.<br>Abrí esta sección desde tu PC.
-            </div>
             <div class="card">
                 <h2 style="margin-top:0;"><i class="fa fa-landmark"></i> Tesorería de Totopos <svg class="totopo-icon"><use href="#totopo"/></svg></h2>
                 <p style="font-size:12px;color:var(--slate);margin-bottom:20px;">
-                    Como director eres el banco central de tu región. Puedes otorgar totopos extra o quemarlos según el desempeño que veas. Cada movimiento queda registrado.
+                    Pool de totopos en circulación de la región seleccionada. Solo lectura.
                 </p>
 
                 <!-- Dashboard de totales -->
@@ -2070,6 +2123,49 @@
         // a mano editando este array.
         const SUPRADIRECTOR_EMAILS = ['rtalertslive@gmail.com'];
 
+        // ─── SUPRADIRECTOR: regiones disponibles ───
+        // Editar este array si se agregan nuevos directores regionales en el futuro.
+        const SUPRA_REGIONS = [
+            { code: '9999', label: 'Tamaulipas' },
+            { code: '9998', label: 'Chihuahua' }
+        ];
+
+        function renderSupraRegionSelector() {
+            const host = document.getElementById('supra-region-selector-host');
+            if (!host) return;
+            host.innerHTML = '<div class="supra-region-selector">'
+                + SUPRA_REGIONS.map(r => `
+                    <button class="supra-region-btn ${state.directorCode === r.code ? 'active' : ''}"
+                            data-supra-region="${r.code}"
+                            onclick="window.setSupraRegion('${r.code}')">
+                        ${r.label}
+                    </button>
+                `).join('')
+                + '</div>';
+        }
+
+        window.setSupraRegion = function (code) {
+            const region = SUPRA_REGIONS.find(r => r.code === code);
+            if (!region) return;
+            state.directorCode = code;
+            state.regionName = region.label;
+            sessionStorage.setItem('supraRegion', code);
+            // Re-render selector (para que el active toggle reflecte) y re-cargar datos
+            renderSupraRegionSelector();
+            // Limpiar state actual antes de re-cargar la región nueva
+            state.promoters = [];
+            state.coaches = [];
+            state.agents = [];
+            state.entries = [];
+            // Re-trigger queries con el nuevo directorCode
+            startListeningPromotores();
+            // Re-render UI activa (leaderboard / KPIs / charts / tienda / tesorería)
+            const activeTab = document.querySelector('.tab-panel.active')?.id?.replace('tab-', '') || 'leaderboard';
+            if (typeof refreshAll === 'function') refreshAll();
+            if (activeTab === 'tienda' && typeof window.initTienda === 'function') window.initTienda();
+            if (activeTab === 'tesoreria' && typeof loadTesoreria === 'function') loadTesoreria();
+        };
+
         onAuthStateChanged(auth, async (u) => {
             if (u) {
                 // Detectar cambio de usuario y forzar recarga (evita data leak en memoria)
@@ -2090,10 +2186,15 @@
                 }
 
                 document.getElementById('login-overlay').classList.add('hidden');
+                document.body.classList.add('supra-readonly');
                 state.isSupradirector = true;
                 state.directorName = u.displayName || 'Supradirector';
-                // Carga cross-región: NO filtrar por directorCode, traer datos de
-                // todos los directores. startListeningPromotores ahora lee todo.
+                // Default region: Tamaulipas (9999). El usuario cambia con el selector.
+                // Cuando state.directorCode es '9999' → ve Tamaulipas. '9998' → Chihuahua.
+                // 'NACIONAL' (futuro) → query sin filtro (mediante state.isSupradirector).
+                state.directorCode = sessionStorage.getItem('supraRegion') || '9999';
+                state.regionName = state.directorCode === '9998' ? 'Chihuahua' : 'Tamaulipas';
+                renderSupraRegionSelector();
                 startListeningPromotores();
                 init();
             } else {
@@ -2332,10 +2433,7 @@
         function startListeningPromotores() {
             stopAllListeners();
 
-            // SUPRADIRECTOR: trae todos los promoters de TODOS los directores (cross-región).
-            // Si no es supra y no tiene directorCode, bail (caso defensivo, no debería pasar
-            // en la app del supradirector pero se mantiene la guardia).
-            if (!state.isSupradirector && !state.directorCode) {
+            if (!state.directorCode) {
                 state.promoters = [];
                 state.coaches = [];
                 state.entries = [];
@@ -2343,11 +2441,9 @@
                 return;
             }
 
-            // Query promoters: cross-región (sin filtro) si supradirector,
-            // sino filtrado por directorCode (lógica original del director).
-            const promQ = state.isSupradirector
-                ? collection(db, "promoters")
-                : query(collection(db, "promoters"), where("directorCode", "==", state.directorCode));
+            // Query promoters por directorCode de la región actualmente seleccionada
+            // (en supradirector, el selector cambia state.directorCode entre 9999/9998).
+            const promQ = query(collection(db, "promoters"), where("directorCode", "==", state.directorCode));
             const unsubPromoters = onSnapshot(promQ, (snapshot) => {
                 const promoters = [];
                 const promotersMap = {};

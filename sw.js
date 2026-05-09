@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pecvs-superdirector-v0.1.0';
+const CACHE_NAME = 'pecvs-superdirector-v0.2.0';
 const ASSETS = ['./', './index.html', './manifest.json', './icon.svg'];
 
 self.addEventListener('install', (event) => {
