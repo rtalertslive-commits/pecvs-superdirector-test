@@ -2801,7 +2801,8 @@
         }
 
         // ─── PENDIENTES (sin actividad reciente) — idéntico al director, scoped por región ───
-        let pendientesMinDays = 3;
+        // Filtro de tier exclusivo: '' = panorama (todos), '0'/'2'/'3'/'4'/'5' = solo ese tier
+        let pendientesTierFilter = '';
         let pendientesPromotorFilter = '';
         let pendientesCoachFilter = '';
 
@@ -2893,15 +2894,13 @@
             return list.filter(p => {
                 if (pendientesPromotorFilter && p.promotorTeamCode !== pendientesPromotorFilter) return false;
                 if (pendientesCoachFilter && p.coachEmail !== pendientesCoachFilter) return false;
-                if (pendientesMinDays === 7  && p.tier !== 0 && p.tier < 3) return false;
-                if (pendientesMinDays === 15 && p.tier !== 0 && p.tier < 4) return false;
-                if (pendientesMinDays === 30 && p.tier !== 0 && p.tier < 5) return false;
+                if (pendientesTierFilter !== '' && String(p.tier) !== pendientesTierFilter) return false;
                 return true;
             });
         }
 
-        window.setPendientesFilter = function (days) {
-            pendientesMinDays = parseInt(days) || 3;
+        window.setPendientesFilter = function (tier) {
+            pendientesTierFilter = tier === '' ? '' : String(tier);
             renderPendientesSection();
         };
         window.setPendientesPromotorFilter = function (code) {
@@ -2972,12 +2971,19 @@
                     .sort((a, b) => (a.coachName || '').localeCompare(b.coachName || ''))
                     .map(c => `<option value="${escapeHtml(c.email)}" ${pendientesCoachFilter === c.email ? 'selected' : ''}>${escapeHtml(c.coachName || c.email)}</option>`).join('');
 
+            // Brackets exclusivos con conteo por opción.
+            const tierCounts = { 0: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+            allPendientes.forEach(p => { if (tierCounts[p.tier] !== undefined) tierCounts[p.tier]++; });
             const filterOpts = [
-                { val: 3,  label: 'Hace 3 días' },
-                { val: 7,  label: 'Hace 1 semana' },
-                { val: 15, label: 'Hace 1 quincena' },
-                { val: 30, label: 'Hace 1 mes' }
-            ].map(o => `<option value="${o.val}" ${pendientesMinDays === o.val ? 'selected' : ''}>${o.label}</option>`).join('');
+                { val: '',  label: 'Todos los pendientes',           count: allPendientes.length, alwaysShow: true },
+                { val: '2', label: '⏳ Hace 3 días',                   count: tierCounts[2] },
+                { val: '3', label: '⏰ Hace 1 semana',                count: tierCounts[3] },
+                { val: '4', label: '🕐 Hace 1 quincena',              count: tierCounts[4] },
+                { val: '5', label: '🚨 Hace más de 1 mes',            count: tierCounts[5] },
+                { val: '0', label: '❓ Nunca reportó',                count: tierCounts[0] }
+            ].filter(o => o.alwaysShow || o.count > 0)
+             .map(o => `<option value="${o.val}" ${pendientesTierFilter === o.val ? 'selected' : ''}>${o.label} (${o.count})</option>`)
+             .join('');
 
             const cardsHtml = filtered.length === 0
                 ? `<div class="lb-mobile-empty" style="padding:24px 16px;font-size:13px;">Sin pendientes con los filtros actuales.</div>`
