@@ -1256,6 +1256,71 @@
         @media (max-width: 767px) {
             #btn-tog-red { display: none !important; }
         }
+
+        /* ═══ SUB-TABS Equipo/Pendientes — MOBILE ONLY ═══ */
+        .lb-subtabs { display: none; }
+        @media (max-width: 767px) {
+            .lb-subtabs {
+                display: flex; gap: 4px; margin-bottom: 14px;
+                background: rgba(255,255,255,0.03); padding: 4px;
+                border-radius: 10px; border: 1px solid rgba(255,255,255,0.06);
+            }
+            body.lb-subview-pendientes #tab-leaderboard .lb-filters,
+            body.lb-subview-pendientes #tab-leaderboard .lb-mobile,
+            body.lb-subview-pendientes #tab-leaderboard .lb-desktop { display: none !important; }
+            body.lb-subview-pendientes #lb-mobile-pendientes-subview { display: block !important; }
+        }
+        .lb-subtab-btn {
+            flex: 1; background: transparent; border: none; color: var(--slate);
+            font-size: 12px; font-weight: 700; padding: 9px 8px; border-radius: 7px;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            gap: 6px; position: relative; transition: background .15s, color .15s; font-family: inherit;
+        }
+        .lb-subtab-btn:hover:not(.active) { background: rgba(255,255,255,0.04); color: var(--white); }
+        .lb-subtab-btn.active { background: rgba(212,175,55,0.15); color: var(--gold); }
+        .lb-subtab-badge {
+            background: #f59e0b; color: #0f172a; font-size: 10px; font-weight: 800;
+            min-width: 18px; height: 18px; border-radius: 999px; padding: 0 6px;
+            display: inline-flex; align-items: center; justify-content: center; line-height: 1;
+        }
+        .lb-pendientes-section { margin-top: 0; }
+        .lb-pendientes-header {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 12px; gap: 10px; flex-wrap: wrap;
+        }
+        .lb-pendientes-title {
+            font-size: 12px; font-weight: 700; color: var(--slate);
+            text-transform: uppercase; letter-spacing: 1px;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .lb-pendientes-title .count {
+            background: rgba(245,158,11,0.15); color: #f59e0b;
+            padding: 2px 8px; border-radius: 999px; font-weight: 800; font-size: 11px;
+        }
+        .lb-pendientes-filters { display: flex; gap: 6px; flex-wrap: wrap; }
+        .lb-pendientes-filter {
+            background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1);
+            color: var(--white); font-size: 11px; padding: 4px 8px; border-radius: 6px; cursor: pointer;
+        }
+        .lb-ghost-card {
+            background: rgba(255,255,255,0.02); border: 1px dashed rgba(255,255,255,0.15);
+            border-radius: 10px; padding: 11px 14px; margin-bottom: 8px;
+            display: flex; align-items: center; gap: 12px; opacity: 0.85;
+        }
+        .lb-ghost-card.tier-5 { border-color: rgba(239,68,68,0.4);  background: rgba(239,68,68,0.04); }
+        .lb-ghost-card.tier-4 { border-color: rgba(248,113,113,0.35); background: rgba(248,113,113,0.04); }
+        .lb-ghost-card.tier-3 { border-color: rgba(251,146,60,0.3);  background: rgba(251,146,60,0.04); }
+        .lb-ghost-card.tier-2 { border-color: rgba(251,191,36,0.25); background: rgba(251,191,36,0.04); }
+        .lb-ghost-card.tier-0 { border-color: rgba(245,158,11,0.3);  background: rgba(245,158,11,0.04); }
+        .lb-ghost-icon { font-size: 22px; flex-shrink: 0; width: 32px; text-align: center; }
+        .lb-ghost-body { flex: 1; min-width: 0; }
+        .lb-ghost-name {
+            font-size: 13px; font-weight: 700; color: var(--white);
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .lb-ghost-tier-label { font-size: 11px; margin-top: 2px; font-weight: 600; }
+        .lb-ghost-second-line { font-size: 10px; color: var(--slate); margin-top: 2px; }
+        .lb-ghost-coach { font-size: 10px; color: var(--slate); margin-top: 2px; opacity: 0.75; }
     </style>
 </head>
 
@@ -1355,6 +1420,17 @@
         <!-- ═══════════════════════════════ TAB: LEADERBOARD ═══════════════════════════════ -->
         <div id="tab-leaderboard" class="tab-panel active">
             <div class="card">
+                <!-- Sub-tabs (mobile only): Equipo / Pendientes con badge -->
+                <div class="lb-subtabs" role="tablist">
+                    <button class="lb-subtab-btn active" data-subview="equipo" onclick="switchLbSubview('equipo')" role="tab">
+                        <i class="fa fa-table"></i> Equipo
+                    </button>
+                    <button class="lb-subtab-btn" data-subview="pendientes" onclick="switchLbSubview('pendientes')" role="tab">
+                        <i class="fa fa-ghost"></i> Pendientes
+                        <span id="lb-subtab-pendientes-badge" class="lb-subtab-badge" style="display:none;">0</span>
+                    </button>
+                </div>
+
                 <div class="lb-filters">
                     <div>
                         <label class="field-label">Equipo Promotor</label>
@@ -1404,6 +1480,11 @@
                     </div>
                     <div id="lb-mobile-team-total"></div>
                     <div id="lb-mobile-rows"></div>
+                </div>
+
+                <!-- Subview PENDIENTES (mobile only, controlado por sub-tabs) -->
+                <div id="lb-mobile-pendientes-subview" style="display:none;">
+                    <div id="lb-mobile-pendientes"></div>
                 </div>
 
                 <div class="table-scroll lb-desktop">
@@ -1781,6 +1862,7 @@
         <button class="bn-btn active" data-tab="leaderboard" onclick="switchTab('leaderboard',this)">
             <i class="fa fa-table"></i>
             <span>Equipo</span>
+            <span id="equipo-pendientes-badge" class="bn-badge" style="display:none;">0</span>
         </button>
         <button class="bn-btn" data-tab="kpis" onclick="switchTab('kpis',this)">
             <i class="fa fa-chart-column"></i>
@@ -2560,39 +2642,47 @@
             batches.forEach((batch, bIdx) => {
                 const usersQ = query(collection(db, "users"), where("teamCode", "in", batch));
                 const unsub = onSnapshot(usersQ, (snapshot) => {
-                    // Each time any batch fires, recompute that batch's contribution
-                    // Simple approach: collect all and re-merge on every update
                     const batchAgents = [];
                     const batchEntries = [];
+                    const batchDetails = {};
                     snapshot.forEach((docSnap) => {
                         const agentData = docSnap.data();
-                        if (agentData.status === 'inactive') return; // skip expulsados
-                        if (agentData.agentName) {
-                            batchAgents.push({
-                                name: agentData.agentName,
-                                teamCode: agentData.teamCode,
-                                email: docSnap.id,
-                                companyCode: agentData.companyCode || '',
-                                telegram_username: agentData.telegram_username || null,
-                                auth_provider: agentData.auth_provider || null,
+                        if (agentData.status === 'inactive') return;
+                        if (!agentData.agentName) return;
+                        const agentId = docSnap.id;
+                        batchAgents.push({
+                            name: agentData.agentName,
+                            teamCode: agentData.teamCode,
+                            email: agentId,
+                            companyCode: agentData.companyCode || '',
+                            telegram_username: agentData.telegram_username || null,
+                            auth_provider: agentData.auth_provider || null,
+                        });
+                        const coach = (state.coaches || []).find(c => c.agentTeamCode === agentData.teamCode);
+                        batchDetails[agentId] = {
+                            agentId,
+                            agentName: agentData.agentName,
+                            email: agentId,
+                            approvedAt: agentData.approvedAt || null,
+                            coachEmail: coach?.email || null,
+                            promotorTeamCode: coach?.promotorTeamCode || null
+                        };
+                        if (agentData.entries) {
+                            agentData.entries.forEach(e => {
+                                e.agent = agentData.agentName;
+                                e.agentId = agentId;
+                                e.teamCode = agentData.teamCode;
+                                batchEntries.push(e);
                             });
-                            if (agentData.entries) {
-                                agentData.entries.forEach(e => {
-                                    e.agent = agentData.agentName;
-                                    e.teamCode = agentData.teamCode;
-                                    batchEntries.push(e);
-                                });
-                            }
                         }
                     });
 
-                    // Store batch results in state batch cache
                     if (!state._agentBatches) state._agentBatches = {};
-                    state._agentBatches[bIdx] = { agents: batchAgents, entries: batchEntries };
+                    state._agentBatches[bIdx] = { agents: batchAgents, entries: batchEntries, details: batchDetails };
 
-                    // Merge all batches
                     state.agents = Object.values(state._agentBatches).flatMap(b => b.agents);
                     state.entries = Object.values(state._agentBatches).flatMap(b => b.entries);
+                    state.agentDetails = Object.values(state._agentBatches).reduce((acc, b) => Object.assign(acc, b.details || {}), {});
                     refreshAll();
                 });
                 unsubListeners.push(unsub);
@@ -2708,6 +2798,234 @@
                 });
                 agentUnsubs.push(unsub);
             });
+        }
+
+        // ─── PENDIENTES (sin actividad reciente) — idéntico al director, scoped por región ───
+        let pendientesMinDays = 3;
+        let pendientesPromotorFilter = '';
+        let pendientesCoachFilter = '';
+
+        function computeLastActivityMap() {
+            const map = {};
+            (state.entries || []).forEach(e => {
+                const key = e.agentId || e.agent;
+                if (!key) return;
+                const [mesName, yearStr] = e.mes.split(' ');
+                const monthIdx = MONTHS_ES.indexOf(mesName);
+                const year = parseInt(yearStr);
+                const semana = parseInt(e.semana);
+                if (!e.dias) return;
+                e.dias.forEach(d => {
+                    const hasActivity = (d.P + d.E + d.C + d.V + d.S) > 0 || d.prima > 0;
+                    if (!hasActivity) return;
+                    const dayIdx = DAYS.indexOf(d.dia);
+                    const dayOfMonth = (semana - 1) * 7 + dayIdx + 1;
+                    const date = new Date(year, monthIdx, Math.min(dayOfMonth, 28));
+                    if (!map[key] || date > map[key]) map[key] = date;
+                });
+            });
+            return map;
+        }
+
+        function formatDaysSince(dateA, dateB) {
+            const ms = dateB - dateA;
+            const days = Math.floor(ms / (1000 * 60 * 60 * 24));
+            if (days < 1) return 'menos de 1 día';
+            if (days === 1) return '1 día';
+            if (days < 7) return `${days} días`;
+            if (days < 14) return '1 semana';
+            if (days < 30) return `${Math.floor(days / 7)} semanas`;
+            if (days < 60) return '1 mes';
+            return `${Math.floor(days / 30)} meses`;
+        }
+
+        function clasificarPendiente(agentId, lastActivityMap, hoy) {
+            const lastDate = lastActivityMap[agentId] || null;
+            const details = state.agentDetails ? state.agentDetails[agentId] : null;
+            if (!lastDate) {
+                const approvedAt = details?.approvedAt ? new Date(details.approvedAt) : null;
+                if (approvedAt) {
+                    const hoursSinceApproval = (hoy - approvedAt) / (1000 * 60 * 60);
+                    if (hoursSinceApproval < 24) return null;
+                }
+                return {
+                    tier: 0,
+                    label: 'Sin actividad desde que se registró',
+                    icon: '❓', color: '#f59e0b',
+                    secondLine: approvedAt ? `Registrado hace ${formatDaysSince(approvedAt, hoy)}` : null
+                };
+            }
+            const dias = Math.floor((hoy - lastDate) / (1000 * 60 * 60 * 24));
+            if (dias >= 30) return { tier: 5, label: 'Sin actividad desde hace más de 1 mes', icon: '🚨', color: '#ef4444' };
+            if (dias >= 15) return { tier: 4, label: 'Sin actividad desde hace 1 quincena',   icon: '🕐', color: '#f87171' };
+            if (dias >= 7)  return { tier: 3, label: 'Sin actividad desde hace 1 semana',     icon: '⏰', color: '#fb923c' };
+            if (dias >= 3)  return { tier: 2, label: 'Sin actividad desde hace 3 días',       icon: '⏳', color: '#fbbf24' };
+            return null;
+        }
+
+        function getPendientes(hoy = new Date()) {
+            if (!state.agents || !state.agents.length) return [];
+            const lastActivityMap = computeLastActivityMap();
+            const list = [];
+            state.agents.forEach(a => {
+                const agentId = a.email || a.name;
+                const cls = clasificarPendiente(agentId, lastActivityMap, hoy);
+                if (!cls) return;
+                const details = state.agentDetails?.[agentId];
+                const coachEmail = details?.coachEmail || null;
+                const coachName = coachEmail && state.coachesMap?.[coachEmail]?.coachName || null;
+                const promotorTeamCode = details?.promotorTeamCode || null;
+                const promotorEntry = promotorTeamCode && (state.promoters || []).find(p =>
+                    p.companyCode === promotorTeamCode || p.promotorCode === promotorTeamCode);
+                const promotorName = promotorEntry?.promoterName || null;
+                const name = details?.agentName || a.name || agentId;
+                list.push({ agentId, name, coachEmail, coachName, promotorTeamCode, promotorName, ...cls });
+            });
+            list.sort((a, b) => {
+                if (a.tier === 0 && b.tier !== 0) return 1;
+                if (b.tier === 0 && a.tier !== 0) return -1;
+                return (a.tier - b.tier) || a.name.localeCompare(b.name);
+            });
+            return list;
+        }
+
+        function applyPendientesFilters(list) {
+            return list.filter(p => {
+                if (pendientesPromotorFilter && p.promotorTeamCode !== pendientesPromotorFilter) return false;
+                if (pendientesCoachFilter && p.coachEmail !== pendientesCoachFilter) return false;
+                if (pendientesMinDays === 7  && p.tier !== 0 && p.tier < 3) return false;
+                if (pendientesMinDays === 15 && p.tier !== 0 && p.tier < 4) return false;
+                if (pendientesMinDays === 30 && p.tier !== 0 && p.tier < 5) return false;
+                return true;
+            });
+        }
+
+        window.setPendientesFilter = function (days) {
+            pendientesMinDays = parseInt(days) || 3;
+            renderPendientesSection();
+        };
+        window.setPendientesPromotorFilter = function (code) {
+            pendientesPromotorFilter = code || '';
+            if (pendientesCoachFilter) {
+                const c = state.coachesMap?.[pendientesCoachFilter];
+                if (pendientesPromotorFilter && c && c.promotorTeamCode !== pendientesPromotorFilter) {
+                    pendientesCoachFilter = '';
+                }
+            }
+            renderPendientesSection();
+        };
+        window.setPendientesCoachFilter = function (email) {
+            pendientesCoachFilter = email || '';
+            renderPendientesSection();
+        };
+
+        let lbActiveSubview = 'equipo';
+        window.switchLbSubview = function (name) {
+            lbActiveSubview = (name === 'pendientes') ? 'pendientes' : 'equipo';
+            document.querySelectorAll('.lb-subtab-btn').forEach(b => {
+                b.classList.toggle('active', b.dataset.subview === lbActiveSubview);
+            });
+            document.body.classList.toggle('lb-subview-pendientes', lbActiveSubview === 'pendientes');
+        };
+
+        function renderPendientesSection() {
+            const section = document.getElementById('lb-mobile-pendientes');
+            if (!section) return;
+            const allPendientes = getPendientes();
+            const filtered = applyPendientesFilters(allPendientes);
+
+            const countLabel = allPendientes.length > 99 ? '99+' : String(allPendientes.length);
+            ['lb-subtab-pendientes-badge', 'equipo-pendientes-badge'].forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+                if (allPendientes.length > 0) { el.style.display = 'inline-flex'; el.textContent = countLabel; }
+                else el.style.display = 'none';
+            });
+
+            if (allPendientes.length === 0) {
+                section.innerHTML = `
+                    <div class="lb-pendientes-section">
+                        <div class="lb-mobile-empty" style="padding:40px 16px;">
+                            <i class="fa fa-check-circle" style="font-size:32px;color:var(--green);margin-bottom:12px;display:block;opacity:0.6;"></i>
+                            Sin pendientes — todos los agentes de esta región están reportando al día.
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            const promotoresConPendientes = new Set(allPendientes.map(p => p.promotorTeamCode).filter(Boolean));
+            const promotorOpts = '<option value="">Todos los promotores</option>' +
+                (state.promoters || [])
+                    .filter(p => promotoresConPendientes.has(p.companyCode) || promotoresConPendientes.has(p.promotorCode))
+                    .sort((a, b) => (a.promoterName || '').localeCompare(b.promoterName || ''))
+                    .map(p => {
+                        const code = p.companyCode || p.promotorCode || '';
+                        return `<option value="${escapeHtml(code)}" ${pendientesPromotorFilter === code ? 'selected' : ''}>${escapeHtml(p.promoterName || p.email)}</option>`;
+                    }).join('');
+
+            const coachesConPendientes = new Set(allPendientes.map(p => p.coachEmail).filter(Boolean));
+            const coachOpts = '<option value="">Todos los coaches</option>' +
+                (state.coaches || [])
+                    .filter(c => coachesConPendientes.has(c.email))
+                    .filter(c => !pendientesPromotorFilter || c.promotorTeamCode === pendientesPromotorFilter)
+                    .sort((a, b) => (a.coachName || '').localeCompare(b.coachName || ''))
+                    .map(c => `<option value="${escapeHtml(c.email)}" ${pendientesCoachFilter === c.email ? 'selected' : ''}>${escapeHtml(c.coachName || c.email)}</option>`).join('');
+
+            const filterOpts = [
+                { val: 3,  label: 'Hace 3 días' },
+                { val: 7,  label: 'Hace 1 semana' },
+                { val: 15, label: 'Hace 1 quincena' },
+                { val: 30, label: 'Hace 1 mes' }
+            ].map(o => `<option value="${o.val}" ${pendientesMinDays === o.val ? 'selected' : ''}>${o.label}</option>`).join('');
+
+            const cardsHtml = filtered.length === 0
+                ? `<div class="lb-mobile-empty" style="padding:24px 16px;font-size:13px;">Sin pendientes con los filtros actuales.</div>`
+                : filtered.map(p => {
+                    const tierClass = `tier-${p.tier}`;
+                    const secondLine = p.secondLine ? `<div class="lb-ghost-second-line">${escapeHtml(p.secondLine)}</div>` : '';
+                    const teamLine = (p.promotorName || p.coachName)
+                        ? `<div class="lb-ghost-coach">${p.promotorName ? '📊 ' + escapeHtml(p.promotorName) : ''}${p.promotorName && p.coachName ? ' · ' : ''}${p.coachName ? '🧑‍🏫 ' + escapeHtml(p.coachName) : ''}</div>`
+                        : '';
+                    return `
+                        <div class="lb-ghost-card ${tierClass}">
+                            <div class="lb-ghost-icon">${p.icon}</div>
+                            <div class="lb-ghost-body">
+                                <div class="lb-ghost-name">${escapeHtml(p.name)}</div>
+                                <div class="lb-ghost-tier-label" style="color:${p.color};">${escapeHtml(p.label)}</div>
+                                ${secondLine}
+                                ${teamLine}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+            const countDisplay = filtered.length === allPendientes.length
+                ? String(allPendientes.length)
+                : `${filtered.length} / ${allPendientes.length}`;
+
+            section.innerHTML = `
+                <div class="lb-pendientes-section">
+                    <div class="lb-pendientes-header">
+                        <div class="lb-pendientes-title">
+                            <i class="fa fa-ghost"></i> Pendientes
+                            <span class="count">${countDisplay}</span>
+                        </div>
+                        <div class="lb-pendientes-filters">
+                            <select class="lb-pendientes-filter" onchange="setPendientesPromotorFilter(this.value)">
+                                ${promotorOpts}
+                            </select>
+                            <select class="lb-pendientes-filter" onchange="setPendientesCoachFilter(this.value)">
+                                ${coachOpts}
+                            </select>
+                            <select class="lb-pendientes-filter" onchange="setPendientesFilter(this.value)">
+                                ${filterOpts}
+                            </select>
+                        </div>
+                    </div>
+                    ${cardsHtml}
+                </div>
+            `;
         }
 
         // ─── INIT ─────────────────────────────────────────────────────────────────────
@@ -3408,6 +3726,8 @@
             const totalEl = document.getElementById('lb-mobile-team-total');
             const rowsEl = document.getElementById('lb-mobile-rows');
             if (!totalEl || !rowsEl) return;
+
+            try { renderPendientesSection(); } catch (e) {}
 
             const agents = Object.keys(agMap);
             if (!agents.length) {
