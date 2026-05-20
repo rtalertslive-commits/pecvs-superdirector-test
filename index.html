@@ -1462,6 +1462,20 @@
                             <option value="6">Semana 6</option>
                         </select>
                     </div>
+                    <div>
+                        <label class="field-label">Día</label>
+                        <select id="lb-dia-filter" onchange="onLbDiaFilterChange()">
+                            <option value="">Todos los días</option>
+                            <option value="__TODAY__">📅 Hoy (día en curso)</option>
+                            <option value="Lunes">Lunes</option>
+                            <option value="Martes">Martes</option>
+                            <option value="Miércoles">Miércoles</option>
+                            <option value="Jueves">Jueves</option>
+                            <option value="Viernes">Viernes</option>
+                            <option value="Sábado">Sábado</option>
+                            <option value="Domingo">Domingo</option>
+                        </select>
+                    </div>
                     <div style="margin-top:18px;">
                         <button id="btn-tog-red" class="btn btn-sm" onclick="toggleRed()">
                             <i class="fa fa-eye"></i> Ver Conciliación Real
@@ -3548,6 +3562,31 @@
             return { ok: errors.length === 0, errors };
         }
 
+        // Handler del select de Día. Cuando el user elige "Hoy", auto-setea
+        // mes y semana actuales para que verdaderamente vea HOY.
+        function onLbDiaFilterChange() {
+            const sel = document.getElementById('lb-dia-filter').value;
+            if (sel === '__TODAY__') {
+                const now = new Date();
+                const monthName = MONTHS_ES[now.getMonth()];
+                const currentMes = `${monthName} ${now.getFullYear()}`;
+                const mesFilter = document.getElementById('lb-mes-filter');
+                if (mesFilter && Array.from(mesFilter.options).some(o => o.value === currentMes)) {
+                    mesFilter.value = currentMes;
+                    refreshLeaderboardWeeks();
+                }
+                const weeks = getMonthCalendar(now.getFullYear(), now.getMonth() + 1);
+                const today = now.getDate();
+                let semIdx = 0;
+                for (let i = 0; i < weeks.length; i++) {
+                    if (weeks[i].some(d => d.date === today)) { semIdx = i + 1; break; }
+                }
+                const semFilter = document.getElementById('lb-sem-filter');
+                if (semFilter && semIdx > 0) semFilter.value = String(semIdx);
+            }
+            renderLeaderboard();
+        }
+
         function refreshLeaderboardWeeks() {
             const mesFilter = document.getElementById('lb-mes-filter');
             const semFilter = document.getElementById('lb-sem-filter');
@@ -3592,6 +3631,10 @@
         function renderLeaderboard() {
             const mesF = document.getElementById('lb-mes-filter').value;
             const semF = document.getElementById('lb-sem-filter').value;
+            const diaFRaw = document.getElementById('lb-dia-filter')?.value || '';
+            const diaF = (diaFRaw === '__TODAY__')
+                ? DAYS[(new Date().getDay() + 6) % 7]
+                : diaFRaw;
             const allowedTeamCodes = getFilteredTeamCodes('lb-promotor-filter', 'lb-coach-filter');
             let filtered = state.entries.filter(e =>
                 (!mesF || e.mes === mesF) &&
@@ -3608,6 +3651,7 @@
                 if (!agMap[e.agent]) agMap[e.agent] = { P: 0, E: 0, C: 0, V: 0, S: 0, prima: 0, redS: 0, redPrima: 0 };
                 if (!agMapMobile[e.agent]) agMapMobile[e.agent] = { P: 0, E: 0, C: 0, V: 0, S: 0, prima: 0 };
                 e.dias.forEach(d => {
+                    if (diaF && d.dia !== diaF) return;
                     // Mobile aggregation: sumar todo sin filtrar
                     COLS.forEach(c => agMapMobile[e.agent][c] += (d[c] || 0));
                     agMapMobile[e.agent].prima += d.prima;
@@ -5999,6 +6043,7 @@
         window.renderKPIs = renderKPIs;
         window.renderLeaderboard = renderLeaderboard;
         window.refreshLeaderboardWeeks = refreshLeaderboardWeeks;
+        window.onLbDiaFilterChange = onLbDiaFilterChange;
         window.refreshMonthFilters = refreshMonthFilters;
         window.initLeaderboardDefaults = initLeaderboardDefaults;
         window.refreshCoachFilters = refreshCoachFilters;
