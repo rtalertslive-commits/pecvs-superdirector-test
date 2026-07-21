@@ -516,7 +516,26 @@
         body.supra-readonly button[onclick*="openTesAction"],
         body.supra-readonly button[onclick*="mintTotopos"],
         body.supra-readonly button[onclick*="burnTotopos"],
-        body.supra-readonly button[onclick*="confirmTesAction"] {
+        body.supra-readonly button[onclick*="confirmTesAction"],
+        /* Buzón — moderación (marcar visto / archivar) queda para el director local */
+        body.supra-readonly button[onclick*="markBuzonSeen"],
+        body.supra-readonly button[onclick*="markBuzonArchived"],
+        /* Gestión — aprobar/rechazar pending, expulsar miembros, editar códigos, guardar */
+        body.supra-readonly button[onclick*="openApprovalModal"],
+        body.supra-readonly button[onclick*="approveMember"],
+        body.supra-readonly button[onclick*="rejectMember"],
+        body.supra-readonly button[onclick*="expelMember"],
+        body.supra-readonly button[onclick*="reactivateMember"],
+        body.supra-readonly button[onclick*="saveMemberChanges"],
+        body.supra-readonly button[onclick*="assignOrphan"],
+        body.supra-readonly button[onclick*="deleteOrphan"],
+        body.supra-readonly button[onclick*="_alertasVerBitacora"],
+        /* Inputs editables de gestión también read-only */
+        body.supra-readonly #gestion-all-list input,
+        body.supra-readonly #gestion-all-list select,
+        body.supra-readonly #pending-list button,
+        body.supra-readonly #orphans-list button,
+        body.supra-readonly #inactivos-list button {
             display: none !important;
         }
         /* Form completo de "Nuevo Item" en catálogos: ocultar */
@@ -2438,7 +2457,7 @@
         // --- IMPORT FIREBASE ---
         import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
         import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, deleteDoc, getDocs, addDoc, updateDoc, collection, query, where, onSnapshot, runTransaction } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
+        import { getFirestore, doc, setDoc, getDoc, deleteDoc, getDocs, addDoc, updateDoc, collection, query, where, orderBy, onSnapshot, runTransaction, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore.js";
 
         // Initialize
         const app = initializeApp(firebaseConfig);
@@ -3652,6 +3671,9 @@
             if (name === 'reporte') renderCoachReportes();
             if (name === 'reporte-promotores') { refreshPromoterReclFilters(); renderPromoterReclSection(); }
             if (name === 'gestion') renderGestion();
+            if (name === 'alertas') { try { renderAlertas(); } catch(e){ console.warn('renderAlertas:', e); } }
+            if (name === 'bitacora') { try { refreshBitAgentSelect(); } catch(e){ console.warn('refreshBitAgentSelect:', e); } }
+            if (name === 'buzon') { try { startBuzonListener(); renderBuzon(); } catch(e){ console.warn('buzon:', e); } }
             if (name === 'tienda') window.initTienda();
             if (name === 'tesoreria') loadTesoreria();
         }
@@ -6722,6 +6744,1609 @@
             }
             document.getElementById('tes-history-modal').classList.add('open');
         };
+
+        // ═══════════════ JS: BITACORA (copiado desde director) ═══════════════
+        // ─── BITÁCORA VIEW (solo lectura) ─────────────────────────────────────────────
+        let bitCurrentWeeks = [];
+
+        // state.agents = array de objetos { name, email, teamCode, ... }.
+        // Para el refactor, usamos a.email como agentId (clave única).
+        // Display name viene de state.agentDetails[id].agentName.
+        function getBitAgentList() { return state.agents.map(a => a.email); } // array de IDs
+        function getBitAgentName(agentId) {
+            return state.agentDetails?.[agentId]?.agentName
+                || state.agents.find(a => a.email === agentId)?.name
+                || agentId;
+        }
+        function getBitAgentCoach(agentId) {
+            // Primero buscar en state.agentDetails (poblada por path 1, batched query)
+            if (state.agentDetails?.[agentId]?.coachEmail) return state.agentDetails[agentId].coachEmail;
+            // Fallback: state.agentCoachMap (poblada por path 2, legacy embedded)
+            if (state.agentCoachMap && state.agentCoachMap[agentId]) return state.agentCoachMap[agentId];
+            // Último fallback: matchear via teamCode del agent doc
+            const agent = state.agents.find(a => a.email === agentId);
+            if (!agent) return null;
+            const coach = state.coaches.find(c => c.agentTeamCode === agent.teamCode);
+            return coach ? coach.email : null;
+        }
+
+        function refreshBitCoachFilter() {
+            const sel = document.getElementById('bit-coach-filter');
+            if (!sel) return;
+            const prev = sel.value;
+            sel.innerHTML = '<option value="">— Todos los coaches —</option>' +
+                state.coaches.map(c => `<option value="${c.email}">${c.coachName || c.email}</option>`).join('');
+            if (prev) sel.value = prev;
+            refreshBitAgentSelect();
+        }
+
+        window.refreshBitAgentSelect = function () {
+            const coachF = document.getElementById('bit-coach-filter').value;
+            const sel = document.getElementById('bit-agent');
+            const prev = sel.value;
+            const agentIds = getBitAgentList();
+            const filtered = coachF
+                ? agentIds.filter(id => getBitAgentCoach(id) === coachF)
+                : agentIds;
+            // Value = agentId (único), label = agentName (display)
+            sel.innerHTML = '<option value="">— Selecciona agente —</option>' +
+                filtered
+                    .slice()
+                    .sort((a, b) => getBitAgentName(a).localeCompare(getBitAgentName(b)))
+                    .map(id => `<option value="${escapeHtml(id)}">${escapeHtml(getBitAgentName(id))}</option>`)
+                    .join('');
+            sel.value = filtered.includes(prev) ? prev : '';
+            autoLoadBit();
+        };
+
+        window.updateBitCalendar = function () {
+            const month = parseInt(document.getElementById('bit-month').value);
+            const year = parseInt(document.getElementById('bit-year').value);
+            if (!month || !year) return;
+            bitCurrentWeeks = getMonthCalendar(year, month);
+            const sel = document.getElementById('bit-semana');
+            const prev = sel.value;
+            sel.innerHTML = bitCurrentWeeks.map((w, i) => {
+                const f = w[0], l = w[w.length - 1];
+                return `<option value="${i + 1}">Sem ${i + 1} &mdash; ${f.dayName.slice(0, 3)} ${f.date} al ${l.dayName.slice(0, 3)} ${l.date}</option>`;
+            }).join('');
+            sel.value = (prev && parseInt(prev) <= bitCurrentWeeks.length) ? prev : '1';
+            autoLoadBit();
+        };
+
+        window.autoLoadBit = function () {
+            const agentId = document.getElementById('bit-agent').value;
+            const semana = document.getElementById('bit-semana').value;
+            const month = parseInt(document.getElementById('bit-month').value);
+            const year = parseInt(document.getElementById('bit-year').value);
+            if (!month || !year) return;
+            const mes = MONTHS_ES[month - 1] + ' ' + year;
+            const semIdx = parseInt(semana) - 1;
+            const weekDays = bitCurrentWeeks[semIdx] || [];
+            buildBitWeekTable(weekDays, agentId, mes, semana);
+            const info = document.getElementById('bit-week-info');
+            if (weekDays.length && agentId) {
+                info.textContent = `📅 ${mes} · Semana ${semana} de ${bitCurrentWeeks.length} · Días: ${weekDays.map(d => d.dayName + ' ' + d.date).join(', ')}`;
+            } else { info.textContent = ''; }
+            updateBitMonthTotals(agentId, mes);
+        };
+
+        function buildBitWeekTable(weekDays, agentId, mes, semana) {
+            const tbody = document.getElementById('bit-week-body');
+            if (!weekDays.length || !agentId) {
+                tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--slate);padding:20px;">${agentId ? '' : 'Selecciona un agente para ver su bitácora.'}</td></tr>`;
+                resetBitTotals(); return;
+            }
+            const entry = state.entries.find(e => (e.agentId || e.agent) === agentId && e.mes === mes && e.semana == semana);
+            const diasMap = {};
+            if (entry) entry.dias.forEach(d => { diasMap[d.dia] = d; });
+            let semP = 0, semE = 0, semC = 0, semV = 0, semS = 0, semPrima = 0;
+            tbody.innerHTML = weekDays.map(({ dayName, date }) => {
+                const d = diasMap[dayName] || { P: 0, E: 0, C: 0, V: 0, S: 0, prima: 0 };
+                const P = d.P || 0, E = d.E || 0, C = d.C || 0, V = d.V || 0, S = d.S || 0, pr = parseFloat(d.prima) || 0;
+                semP += P; semE += E; semC += C; semV += V; semS += S; semPrima += pr;
+                const funnel = d.sinActividad === true ? '🌙' : (P >= E && E >= C && C >= V ? (P > 0 ? '🟢' : '⚪') : '🔴');
+                return `<tr>
+                  <td class="day-label">${dayName} <span style="font-size:10px;color:var(--slate);">${date}</span></td>
+                  <td style="text-align:center;">${P}</td><td style="text-align:center;">${E}</td>
+                  <td style="text-align:center;">${C}</td><td style="text-align:center;">${V}</td>
+                  <td style="text-align:center;">${S}</td>
+                  <td style="text-align:center;">$${pr.toFixed(0)}</td>
+                  <td style="text-align:center;font-size:16px;">${funnel}</td>
+                </tr>`;
+            }).join('');
+            document.getElementById('bit-tt-P').textContent = semP;
+            document.getElementById('bit-tt-E').textContent = semE;
+            document.getElementById('bit-tt-C').textContent = semC;
+            document.getElementById('bit-tt-V').textContent = semV;
+            document.getElementById('bit-tt-S').textContent = semS;
+            document.getElementById('bit-tt-$').textContent = '$' + semPrima.toFixed(0);
+        }
+
+        function updateBitMonthTotals(agentId, mes) {
+            if (!agentId) { resetBitMonthTotals(); return; }
+            const monthEntries = state.entries.filter(e => (e.agentId || e.agent) === agentId && e.mes === mes);
+            let mP = 0, mE = 0, mC = 0, mV = 0, mS = 0, mPrima = 0;
+            monthEntries.forEach(e => {
+                if (e.totales) { mP += e.totales.P || 0; mE += e.totales.E || 0; mC += e.totales.C || 0; mV += e.totales.V || 0; mS += e.totales.S || 0; mPrima += parseFloat(e.totales.prima) || 0; }
+            });
+            document.getElementById('bit-ttm-P').textContent = mP;
+            document.getElementById('bit-ttm-E').textContent = mE;
+            document.getElementById('bit-ttm-C').textContent = mC;
+            document.getElementById('bit-ttm-V').textContent = mV;
+            document.getElementById('bit-ttm-S').textContent = mS;
+            document.getElementById('bit-ttm-$').textContent = '$' + mPrima.toFixed(0);
+        }
+
+        function resetBitTotals() {
+            ['P', 'E', 'C', 'V', 'S'].forEach(c => { document.getElementById(`bit-tt-${c}`).textContent = '0'; });
+            document.getElementById('bit-tt-$').textContent = '$0';
+            resetBitMonthTotals();
+        }
+
+        function resetBitMonthTotals() {
+            ['P', 'E', 'C', 'V', 'S'].forEach(c => { document.getElementById(`bit-ttm-${c}`).textContent = '0'; });
+            document.getElementById('bit-ttm-$').textContent = '$0';
+        }
+
+        window.renderBitHistory = function () {
+            const grid = document.getElementById('bit-history-grid');
+            if (!grid) return;
+            const coachF = document.getElementById('bit-coach-filter').value;
+            const agentF = document.getElementById('bit-agent').value; // agentId
+            let filtered = state.entries;
+            if (coachF) filtered = filtered.filter(e => getBitAgentCoach(e.agentId || e.agent) === coachF);
+            if (agentF) filtered = filtered.filter(e => (e.agentId || e.agent) === agentF);
+            if (!filtered.length) {
+                grid.innerHTML = '<div class="empty-state"><i class="fa fa-inbox"></i> No hay entradas.</div>';
+                return;
+            }
+            grid.innerHTML = filtered.map(e => {
+                const origIdx = state.entries.indexOf(e);
+                return `<div class="history-chip" onclick="loadBitEntry(${origIdx})">
+                  <span style="font-weight:700;color:var(--gold)">${e.agent}</span>
+                  <span style="color:var(--slate)">${e.mes} · Sem ${e.semana}</span>
+                  <span style="color:var(--teal);font-size:11px;">P:${e.totales?.P||0} E:${e.totales?.E||0} V:${e.totales?.V||0}</span>
+                </div>`;
+            }).join('');
+        };
+
+        window.loadBitEntry = function (i) {
+            const e = state.entries[i];
+            if (!e) return;
+            // bit-agent value es agentId (no nombre)
+            document.getElementById('bit-agent').value = e.agentId || e.agent;
+            const parts = e.mes.split(' ');
+            const mIdx = MONTHS_ES.indexOf(parts[0]);
+            if (mIdx >= 0) {
+                document.getElementById('bit-month').value = mIdx + 1;
+                document.getElementById('bit-year').value = parseInt(parts[1]) || new Date().getFullYear();
+                updateBitCalendar();
+            }
+            document.getElementById('bit-semana').value = e.semana;
+            autoLoadBit();
+            const m = document.getElementById('modal-bit-log');
+            if (m) m.classList.remove('open'); // modal eliminado, defensivo
+        };
+
+        function initBitacora() {
+            updateBitCalendar();
+            refreshBitCoachFilter();
+        }
+
+        window.saveState = async function () {
+            await saveDirectorData();
+        }
+
+        function refreshAll() {
+            document.getElementById('director-display').textContent = 'Director: ' + (state.directorName || '—');
+            refreshPromotorSelects();
+            refreshCoachFilters();
+            refreshChartAgents();
+            renderLeaderboard();
+            renderCharts();
+            renderKPIs();
+            refreshMonthFilters();
+            renderCoachReportes();
+            if (document.getElementById('tab-gestion')?.classList.contains('active')) renderGestion();
+            refreshBitCoachFilter();
+        }
+
+
+        // ═══════════════ JS: ALERTAS (copiado desde director) ═══════════════
+        // ─── ALERTAS DE EQUIPO ───────────────────────────────────────────────────────
+        // Reporte diagnóstico mensual con 2 flags:
+        //   🌙 Rendidos: agentes con más de N días de 'sin intento de venta' en el mes.
+        //   🟢 Verde sin cierre: agentes con ≥N días de semáforo verde (P>=E>=C>=V, P>0)
+        //       y prima total del mes = $0.
+        let _alertasListenersBound = false;
+        function initAlertasFilters() {
+            const selMes = document.getElementById('alertas-mes');
+            const inpYear = document.getElementById('alertas-year');
+            if (!selMes || !inpYear) return;
+            if (selMes.options.length === 0) {
+                MONTHS_ES.forEach((m, i) => {
+                    const opt = document.createElement('option');
+                    opt.value = m;
+                    opt.textContent = m;
+                    selMes.appendChild(opt);
+                });
+                const now = new Date();
+                selMes.value = MONTHS_ES[now.getMonth()];
+                inpYear.value = now.getFullYear();
+            }
+            if (!_alertasListenersBound) {
+                // Adjuntamos con addEventListener en vez de inline onchange porque el inline
+                // no dispara siempre en algunos browsers/mobile — el user reportó que
+                // cambiaba el mes y no se re-renderizaba.
+                selMes.addEventListener('change', renderAlertas);
+                inpYear.addEventListener('change', renderAlertas);
+                inpYear.addEventListener('input', renderAlertas);
+                const uMoon = document.getElementById('alertas-umbral-moon');
+                const uVerde = document.getElementById('alertas-umbral-verde');
+                if (uMoon) { uMoon.addEventListener('change', renderAlertas); uMoon.addEventListener('input', renderAlertas); }
+                if (uVerde) { uVerde.addEventListener('change', renderAlertas); uVerde.addEventListener('input', renderAlertas); }
+                _alertasListenersBound = true;
+            }
+        }
+
+        function _alertasAgentContext(agentIdOrName) {
+            // state.agents item = { name, teamCode, email, companyCode }  (NO agentName!)
+            const a = (state.agents || []).find(x =>
+                x.email === agentIdOrName || x.name === agentIdOrName
+            );
+            const agentName = a?.name || agentIdOrName || '—';
+            const teamCode = a?.teamCode || null;
+            // Coach: state.coaches[i].agentTeamCode matchea con agent.teamCode
+            const coach = teamCode
+                ? (state.coaches || []).find(c => c.agentTeamCode === teamCode)
+                : null;
+            const coachName = coach?.coachName || '—';
+            // Promotor: coach.promotorTeamCode matchea con promoter.promotorCode
+            const promotorTeamCode = coach?.promotorTeamCode || null;
+            const promotor = promotorTeamCode
+                ? (state.promoters || []).find(p => p.promotorCode === promotorTeamCode)
+                : null;
+            const promotorName = promotor?.promoterName || '—';
+            return { agentName, agentClave: teamCode || '—', coachName, promotorName };
+        }
+
+        function _computeAlertasStats(mesStr) {
+            const monthEntries = (state.entries || []).filter(e => e.mes === mesStr);
+            const stats = {};
+            monthEntries.forEach(e => {
+                const key = e.agentId || e.agent;
+                if (!key) return;
+                if (!stats[key]) stats[key] = { moon: 0, green: 0, prima: 0, daysWithData: 0 };
+                (e.dias || []).forEach(d => {
+                    if (!d) return;
+                    const P = Number(d.P) || 0;
+                    const E = Number(d.E) || 0;
+                    const C = Number(d.C) || 0;
+                    const V = Number(d.V) || 0;
+                    const prima = parseFloat(d.prima) || 0;
+                    const isMoon = d.sinActividad === true;
+                    const hasAnyActivity = P > 0 || E > 0 || C > 0 || V > 0 || prima > 0 || isMoon;
+                    if (!hasAnyActivity) return;
+                    stats[key].daysWithData += 1;
+                    if (isMoon) stats[key].moon += 1;
+                    if (!isMoon && P > 0 && P >= E && E >= C && C >= V) stats[key].green += 1;
+                    stats[key].prima += prima;
+                });
+            });
+            return stats;
+        }
+
+
+        // ═══════════════ JS: BUZON (copiado desde director) ═══════════════
+        // ═══ BUZÓN DE SUGERENCIAS Y ERRORES ═══════════════════════════════════
+        let _buzonCache = [];
+        let _buzonUnsub = null;
+        function startBuzonListener() {
+            if (_buzonUnsub) return;
+            if (!state.directorCode) return;
+            const q = query(collection(db, 'feedback'), where('directorCode', '==', state.directorCode));
+            _buzonUnsub = onSnapshot(q, snap => {
+                _buzonCache = [];
+                snap.forEach(d => _buzonCache.push({ id: d.id, ...d.data() }));
+                _buzonCache.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+                _updateBuzonBadge();
+                if (document.getElementById('tab-buzon')?.classList.contains('active')) renderBuzon();
+            }, err => console.error('[buzon] listener err:', err));
+        }
+
+        function _updateBuzonBadge() {
+            const pending = _buzonCache.filter(f => (f.status || 'pending') === 'pending').length;
+            const badge = document.getElementById('buzon-badge');
+            if (badge) {
+                if (pending > 0) { badge.textContent = pending; badge.style.display = 'inline-block'; }
+                else badge.style.display = 'none';
+            }
+        }
+
+        function renderBuzon() {
+            const listEl = document.getElementById('buzon-list');
+            const countLbl = document.getElementById('buzon-counts-label');
+            if (!listEl) return;
+            const statusFilter = document.getElementById('buzon-filter-status')?.value || 'pending';
+            const tipoFilter = document.getElementById('buzon-filter-tipo')?.value || '';
+            const totalCount = _buzonCache.length;
+            const pendCount = _buzonCache.filter(f => (f.status || 'pending') === 'pending').length;
+            if (countLbl) countLbl.textContent = `${pendCount} pendientes · ${totalCount} en total`;
+
+            const items = _buzonCache.filter(f => {
+                const st = f.status || 'pending';
+                if (statusFilter !== 'all' && st !== statusFilter) return false;
+                if (tipoFilter && f.tipo !== tipoFilter) return false;
+                return true;
+            });
+
+            if (items.length === 0) {
+                listEl.innerHTML = `<div class="empty-state" style="color:var(--green);"><i class="fa fa-check-circle"></i>No hay mensajes ${statusFilter === 'pending' ? 'pendientes' : ''} con esos filtros.</div>`;
+                return;
+            }
+
+            const tipoEmoji = { sugerencia: '💡', bug: '🐞', otro: '💬' };
+            const tipoLabel = { sugerencia: 'Sugerencia', bug: 'Errores en la app', otro: 'Otro' };
+            const tipoColor = { sugerencia: 'var(--gold-l)', bug: 'var(--red)', otro: 'var(--slate)' };
+            const statusPill = st => {
+                if (st === 'seen') return `<span style="font-size:10px; background:rgba(148,163,184,0.2); color:var(--slate); padding:2px 8px; border-radius:10px; font-weight:600;">✓ Visto</span>`;
+                if (st === 'archived') return `<span style="font-size:10px; background:rgba(148,163,184,0.15); color:var(--slate); padding:2px 8px; border-radius:10px; font-weight:600;">📦 Archivado</span>`;
+                return `<span style="font-size:10px; background:var(--red); color:#fff; padding:2px 8px; border-radius:10px; font-weight:700;">Pendiente</span>`;
+            };
+
+            listEl.innerHTML = items.map(f => {
+                const st = f.status || 'pending';
+                const fecha = f.createdAt?.toDate?.().toLocaleString?.('es-MX', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) || '—';
+                const nombreDisplay = escapeHtml(f.fromName || f.from || '—');
+                const roleLabel = f.fromRole === 'agente' ? 'Agente' : (f.fromRole || '');
+                return `
+                    <div style="padding:14px; background:rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.08); border-radius:10px; border-left:4px solid ${tipoColor[f.tipo] || 'var(--slate)'};">
+                        <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:10px; flex-wrap:wrap;">
+                            <div>
+                                <div style="font-size:12px; font-weight:800; color:${tipoColor[f.tipo] || 'var(--slate)'}; margin-bottom:2px;">${tipoEmoji[f.tipo] || '💬'} ${tipoLabel[f.tipo] || f.tipo}</div>
+                                <div style="font-size:11px; color:var(--slate);">${nombreDisplay}${roleLabel ? ` · <span style="opacity:0.7;">${escapeHtml(roleLabel)}</span>` : ''}${f.teamCode ? ` · clave <span style="font-family:monospace; color:var(--gold-l);">${escapeHtml(f.teamCode)}</span>` : ''}</div>
+                            </div>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                ${statusPill(st)}
+                                <span style="font-size:10px; color:var(--slate);">${escapeHtml(fecha)}</span>
+                            </div>
+                        </div>
+                        <div style="font-size:13px; color:var(--white); white-space:pre-wrap; line-height:1.6; padding:10px 12px; background:rgba(15,23,42,0.4); border-radius:6px;">${escapeHtml(f.texto || '')}</div>
+                        <div style="display:flex; gap:8px; margin-top:10px; justify-content:flex-end;">
+                            ${st === 'pending' ? `<button onclick="markBuzonSeen('${f.id}')" style="padding:6px 12px; background:rgba(59,130,246,0.15); color:#93c5fd; border:1px solid rgba(59,130,246,0.4); border-radius:6px; font-size:11px; font-weight:600; cursor:pointer;"><i class="fa fa-check"></i> Marcar visto</button>` : ''}
+                            ${st !== 'archived' ? `<button onclick="markBuzonArchived('${f.id}')" style="padding:6px 12px; background:rgba(148,163,184,0.15); color:var(--slate); border:1px solid rgba(148,163,184,0.3); border-radius:6px; font-size:11px; font-weight:600; cursor:pointer;"><i class="fa fa-box-archive"></i> Archivar</button>` : ''}
+                        </div>
+                    </div>`;
+            }).join('');
+        }
+
+        async function markBuzonSeen(id) {
+            try {
+                await updateDoc(doc(db, 'feedback', id), { status: 'seen', viewedAt: serverTimestamp() });
+            } catch (e) { console.error('[buzon] seen err:', e); alert('No se pudo marcar como visto.'); }
+        }
+        async function markBuzonArchived(id) {
+            try {
+                await updateDoc(doc(db, 'feedback', id), { status: 'archived', archivedAt: serverTimestamp() });
+            } catch (e) { console.error('[buzon] archive err:', e); alert('No se pudo archivar.'); }
+        }
+
+        function renderAlertas() {
+            initAlertasFilters();
+            const mes = document.getElementById('alertas-mes')?.value || MONTHS_ES[new Date().getMonth()];
+            const year = document.getElementById('alertas-year')?.value || new Date().getFullYear();
+            const umbralMoon = Math.max(1, parseInt(document.getElementById('alertas-umbral-moon')?.value || '8'));
+            const umbralVerde = Math.max(1, parseInt(document.getElementById('alertas-umbral-verde')?.value || '8'));
+            const moonLabel = document.getElementById('alertas-rendidos-umbral');
+            const verdeLabel = document.getElementById('alertas-verdes-umbral');
+            if (moonLabel) moonLabel.textContent = umbralMoon;
+            if (verdeLabel) verdeLabel.textContent = umbralVerde;
+            const mesStr = `${mes} ${year}`;
+            const stats = _computeAlertasStats(mesStr);
+
+            // Diagnóstico visible + console para poder debuggear cuando "no muestra nada"
+            const totalEntries = (state.entries || []).length;
+            const entriesDelMes = (state.entries || []).filter(e => e.mes === mesStr).length;
+            const mesesDisponibles = [...new Set((state.entries || []).map(e => e.mes))].sort();
+            const statusEl = document.getElementById('alertas-status');
+            if (statusEl) {
+                statusEl.innerHTML =
+                    `📊 state.entries total: <b>${totalEntries}</b> · ` +
+                    `Entries de <b>${mesStr}</b>: <b>${entriesDelMes}</b> · ` +
+                    `Agentes con actividad: <b>${Object.keys(stats).length}</b> · ` +
+                    `state.agents: <b>${(state.agents || []).length}</b>` +
+                    (mesesDisponibles.length && entriesDelMes === 0
+                        ? `<br>⚠️ Meses con data disponibles: ${mesesDisponibles.map(m => `<span style="color:var(--gold-l)">${m}</span>`).join(', ')}`
+                        : '');
+            }
+            console.log('[Alertas] Diagnóstico', {
+                mesStr, totalEntries, entriesDelMes, statsKeys: Object.keys(stats).length,
+                mesesDisponibles, sampleStats: Object.entries(stats).slice(0, 3),
+                sampleEntry: (state.entries || []).find(e => e.mes === mesStr)
+            });
+
+            const rendidos = [];
+            const verdesSinCierre = [];
+            const totalAgentesConData = Object.keys(stats).length;
+            Object.keys(stats).forEach(key => {
+                const s = stats[key];
+                const ctx = _alertasAgentContext(key);
+                if (s.moon >= umbralMoon) {
+                    rendidos.push({ key, ...ctx, moon: s.moon, days: s.daysWithData });
+                }
+                if (s.green >= umbralVerde && s.prima === 0 && s.daysWithData >= umbralVerde) {
+                    verdesSinCierre.push({ key, ...ctx, green: s.green, days: s.daysWithData });
+                }
+            });
+
+            rendidos.sort((a, b) => b.moon - a.moon);
+            verdesSinCierre.sort((a, b) => b.green - a.green);
+
+            const noData = totalAgentesConData === 0;
+            _renderAlertasTable('alertas-rendidos-list', rendidos, mesStr, {
+                emptyMsg: noData
+                    ? `No hay bitácoras cargadas para ${mesStr}. Elegí otro mes.`
+                    : `Nadie con ≥${umbralMoon} días de 🌙 en ${mesStr} (${totalAgentesConData} agentes con actividad). ¡Bien!`,
+                valueCol: 'Días 🌙',
+                valueKey: 'moon',
+                valueColor: 'var(--slate)'
+            });
+            _renderAlertasTable('alertas-verdes-list', verdesSinCierre, mesStr, {
+                emptyMsg: noData
+                    ? `No hay bitácoras cargadas para ${mesStr}. Elegí otro mes.`
+                    : `Nadie con ≥${umbralVerde} días verdes sin prima en ${mesStr} (${totalAgentesConData} agentes con actividad).`,
+                valueCol: 'Días 🟢',
+                valueKey: 'green',
+                valueColor: 'var(--green)'
+            });
+
+            const badge = document.getElementById('alertas-badge');
+            if (badge) {
+                const total = rendidos.length + verdesSinCierre.length;
+                if (total > 0) { badge.textContent = total; badge.style.display = 'inline-block'; }
+                else badge.style.display = 'none';
+            }
+        }
+
+        function _renderAlertasTable(containerId, rows, mesStr, cfg) {
+            const el = document.getElementById(containerId);
+            if (!el) return;
+            if (rows.length === 0) {
+                el.innerHTML = `<div class="empty-state" style="color:var(--green);"><i class="fa fa-check-circle"></i>${cfg.emptyMsg}</div>`;
+                return;
+            }
+            const escapeAttr = s => String(s || '').replace(/"/g, '&quot;');
+            el.innerHTML = `
+                <div style="overflow-x:auto;">
+                <table style="width:100%; border-collapse:collapse; font-size:12px;">
+                    <thead>
+                        <tr style="background:rgba(255,255,255,0.04); color:var(--slate); text-align:left;">
+                            <th style="padding:8px;">Agente</th>
+                            <th style="padding:8px;">Clave</th>
+                            <th style="padding:8px;">Coach</th>
+                            <th style="padding:8px;">Promotor</th>
+                            <th style="padding:8px; text-align:center; color:${cfg.valueColor};">${cfg.valueCol}</th>
+                            <th style="padding:8px; text-align:center;">Días con datos</th>
+                            <th style="padding:8px; text-align:center;">Calendario</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rows.map(r => `
+                        <tr style="border-top:1px solid rgba(255,255,255,0.06);">
+                            <td style="padding:8px; font-weight:600;">${escapeHtml(r.agentName)}</td>
+                            <td style="padding:8px; color:var(--gold-l); font-family:monospace; font-size:11px;">${escapeHtml(r.agentClave)}</td>
+                            <td style="padding:8px; color:var(--slate);">${escapeHtml(r.coachName)}</td>
+                            <td style="padding:8px; color:var(--slate);">${escapeHtml(r.promotorName)}</td>
+                            <td style="padding:8px; text-align:center; font-weight:800; color:${cfg.valueColor};">${r[cfg.valueKey]}</td>
+                            <td style="padding:8px; text-align:center; color:var(--slate);">${r.days}</td>
+                            <td style="padding:8px; text-align:center;">
+                                <button onclick="_alertasVerBitacora('${escapeAttr(r.agentName)}', '${escapeAttr(mesStr)}')" style="background:var(--gold); color:#000; border:none; border-radius:6px; padding:4px 10px; font-size:11px; font-weight:700; cursor:pointer;" title="Abrir calendario del agente en ${escapeAttr(mesStr)}">📅</button>
+                            </td>
+                        </tr>`).join('')}
+                    </tbody>
+                </table>
+                </div>`;
+        }
+
+        function _alertasVerBitacora(agentName, mesStr) {
+            // Abre el modal de calendario del agente en el mes de la alerta.
+            // openAgentCalendar setea el mes actual — lo sobrescribimos al mes elegido.
+            if (typeof openAgentCalendar !== 'function') {
+                console.warn('[Alertas] openAgentCalendar no disponible');
+                return;
+            }
+            openAgentCalendar(agentName);
+            const [mesName, yearStr] = mesStr.split(' ');
+            const monthIdx = MONTHS_ES.indexOf(mesName);
+            if (monthIdx < 0) return;
+            // _calCurrentYear y _calCurrentMonth son let en el mismo script scope
+            _calCurrentYear = parseInt(yearStr);
+            _calCurrentMonth = monthIdx + 1;
+            if (typeof _renderAgentCalendar === 'function') _renderAgentCalendar();
+        }
+
+
+        // ═══════════════ JS: GESTION (copiado desde director) ═══════════════
+        // ─── GESTIÓN DE EQUIPO ───────────────────────────────────────────────────────
+        let pendingUsers = [];
+        let currentApproval = null;
+
+        function startListeningPending() {
+            const pendQ = collection(db, "pending_users");
+            const unsubPending = onSnapshot(pendQ, (snapshot) => {
+                pendingUsers = [];
+                const myRegion = (state.regionName || '').toLowerCase();
+                if (!myRegion) {
+                    // Sin región no mostramos nada (evita data leak entre directores)
+                    const badge = document.getElementById('pending-badge');
+                    const badgeMobile = document.getElementById('pending-badge-mobile');
+                    if (badge) badge.style.display = 'none';
+                    if (badgeMobile) badgeMobile.style.display = 'none';
+                    if (document.getElementById('tab-gestion')?.classList.contains('active')) renderGestion();
+                    return;
+                }
+                snapshot.forEach(docSnap => {
+                    const data = docSnap.data();
+                    // Filtrar estrictamente: la solicitud DEBE coincidir con mi región
+                    const userRegion = (data.region || '').toLowerCase();
+                    if (userRegion !== myRegion) return;
+                    pendingUsers.push({ email: docSnap.id, ...data });
+                });
+                // Update badge (desktop + mobile)
+                const badge = document.getElementById('pending-badge');
+                const badgeMobile = document.getElementById('pending-badge-mobile');
+                if (badge) {
+                    if (pendingUsers.length > 0) {
+                        badge.textContent = pendingUsers.length;
+                        badge.style.display = 'inline';
+                    } else {
+                        badge.style.display = 'none';
+                    }
+                }
+                if (badgeMobile) {
+                    if (pendingUsers.length > 0) {
+                        badgeMobile.textContent = pendingUsers.length;
+                        badgeMobile.style.display = 'inline-block';
+                    } else {
+                        badgeMobile.style.display = 'none';
+                    }
+                }
+                if (document.getElementById('tab-gestion')?.classList.contains('active')) renderGestion();
+            });
+            unsubListeners.push(unsubPending);
+        }
+
+        function renderGestion() {
+            renderGestionCounters();
+            renderPendingList();
+            renderGestionAll();
+            renderOrphans();
+            renderInactivosCard();
+        }
+
+        // Contadores compactos de agentes:
+        //  - Registrados: state.agents.length (ya filtrado por status !== 'inactive').
+        //  - Activos últimos 7d: agentes con al menos 1 día llenado (P+E+C+V+S > 0,
+        //    prima > 0, o sinActividad === true) en los últimos 7 días.
+        function renderGestionCounters() {
+            const $ = id => document.getElementById(id);
+            const registered = (state.agents || []).length;
+            if ($('counter-agents')) $('counter-agents').textContent = registered;
+
+            const now = new Date();
+            const sevenAgo = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 7);
+            const activeAgentIds = new Set();
+            (state.entries || []).forEach(e => {
+                if (!e || !e.mes || !e.dias) return;
+                const [mesName, yearStr] = String(e.mes).split(' ');
+                const monthIdx = MONTHS_ES.indexOf(mesName);
+                const year = parseInt(yearStr);
+                const semana = parseInt(e.semana);
+                if (monthIdx < 0 || isNaN(year) || isNaN(semana)) return;
+                // Usamos el calendario real del mes para mapear semana+dayName a la fecha.
+                const weeks = getMonthCalendar(year, monthIdx + 1);
+                const weekDays = weeks[semana - 1] || [];
+                e.dias.forEach(d => {
+                    if (!d || !d.dia) return;
+                    const hasActivity = (d.P + d.E + d.C + d.V + d.S) > 0 || (parseFloat(d.prima) || 0) > 0 || d.sinActividad === true;
+                    if (!hasActivity) return;
+                    const dayInfo = weekDays.find(w => w.dayName === d.dia);
+                    if (!dayInfo) return;
+                    const date = new Date(year, monthIdx, dayInfo.date);
+                    if (date >= sevenAgo && date <= now) {
+                        const aid = e.agentId || e.agent || '?';
+                        activeAgentIds.add(aid);
+                    }
+                });
+            });
+            if ($('counter-active-7d')) $('counter-active-7d').textContent = activeAgentIds.size;
+        }
+
+        // Detecta jerarquía rota: usuarios activos cuyo código de asignación
+        // no apunta a un padre activo y existente.
+        // CRÍTICO: usa queries propias (no state.coaches/state.agents) porque esos
+        // están filtrados por promotorTeamCode/teamCode válidos en sus listeners.
+        // Si un coach tiene un código inválido, NO aparece en state.coaches —
+        // necesitamos consultarlo directamente con where(directorCode==dc).
+        window.renderOrphans = async function () {
+            const container = document.getElementById('orphans-list');
+            if (!container) return;
+            const dc = state.directorCode;
+            if (!dc) {
+                container.innerHTML = '<div class="empty-state"><i class="fa fa-circle-info"></i> Configura tu Código de Director primero.</div>';
+                return;
+            }
+            container.innerHTML = '<div class="empty-state"><i class="fa fa-spinner fa-spin"></i> Calculando huérfanos...</div>';
+
+            // Sets de códigos VÁLIDOS de cada nivel (solo activos del directorCode actual)
+            const promotorCodes = new Set();
+            state.promoters.forEach(p => {
+                if (p.status === 'inactive') return;
+                if (p.companyCode) promotorCodes.add(p.companyCode);
+                if (p.promotorCode) promotorCodes.add(p.promotorCode);
+                if (p.promotorNum) promotorCodes.add(`TEAM-PROMOTOR-${p.promotorNum}`);
+            });
+
+            const coachCodes = new Set();
+            state.coaches.forEach(c => {
+                if (c.status === 'inactive') return;
+                if (c.companyCode) coachCodes.add(c.companyCode);
+                if (c.agentTeamCode) coachCodes.add(c.agentTeamCode);
+                if (c.coachNum) coachCodes.add(`TEAM-COACH-${c.coachNum}`);
+            });
+
+            const orphans = [];
+
+            // Cargar TODOS los coaches del directorCode (sin filtrar por promotorTeamCode)
+            // así capturamos los que tienen códigos inválidos
+            try {
+                const coachesSnap = await getDocs(query(collection(db, 'coaches'), where('directorCode', '==', dc)));
+                coachesSnap.forEach(d => {
+                    const c = d.data();
+                    if (c.status === 'inactive') return;
+                    const ptc = c.promotorTeamCode || '';
+                    if (!ptc || !promotorCodes.has(ptc)) {
+                        orphans.push({
+                            role: 'coach',
+                            name: c.coachName || '',
+                            email: d.id,
+                            companyCode: c.companyCode || '',
+                            currentAssign: ptc,
+                            reason: !ptc ? 'Sin código de promotor asignado' : `El código "${ptc}" no apunta a ningún promotor activo`
+                        });
+                    }
+                });
+
+                // Cargar TODOS los agentes del directorCode
+                const agentsSnap = await getDocs(query(collection(db, 'users'), where('directorCode', '==', dc)));
+                agentsSnap.forEach(d => {
+                    const a = d.data();
+                    if (a.status === 'inactive') return;
+                    const tc = a.teamCode || '';
+                    if (!tc || !coachCodes.has(tc)) {
+                        orphans.push({
+                            role: 'agent',
+                            name: a.agentName || a.name || '',
+                            email: d.id,
+                            companyCode: a.companyCode || '',
+                            currentAssign: tc,
+                            reason: !tc ? 'Sin código de coach asignado' : `El código "${tc}" no apunta a ningún coach activo`
+                        });
+                    }
+                });
+            } catch (e) {
+                console.error('[renderOrphans]', e);
+                container.innerHTML = `<div class="empty-state">Error: ${escapeHtml(e.message)}</div>`;
+                return;
+            }
+
+            // Aplicar filtros: búsqueda + ocultar datos test
+            const searchEl = document.getElementById('orphans-search');
+            const hideTestEl = document.getElementById('orphans-hide-test');
+            const search = (searchEl?.value || '').toLowerCase();
+            const hideTest = hideTestEl?.checked !== false; // default true
+            const totalCount = orphans.length;
+            let filtered = orphans;
+            if (hideTest) {
+                filtered = filtered.filter(o => !/@(example|test)\.com$/i.test(o.email));
+            }
+            if (search) {
+                filtered = filtered.filter(o =>
+                    (o.name || '').toLowerCase().includes(search) ||
+                    (o.email || '').toLowerCase().includes(search) ||
+                    (o.companyCode || '').toLowerCase().includes(search) ||
+                    (o.currentAssign || '').toLowerCase().includes(search)
+                );
+            }
+
+            // Update count badge
+            const countEl = document.getElementById('orphans-count');
+            if (countEl) {
+                if (totalCount === filtered.length) countEl.textContent = `(${filtered.length})`;
+                else countEl.textContent = `(${filtered.length} de ${totalCount} — filtrados)`;
+            }
+
+            if (!filtered.length) {
+                if (totalCount === 0) {
+                    container.innerHTML = '<div class="empty-state" style="padding:14px 0;color:var(--green);"><i class="fa fa-check-circle"></i> Sin huérfanos. Toda la jerarquía está conectada.</div>';
+                } else {
+                    container.innerHTML = `<div class="empty-state" style="padding:14px 0;"><i class="fa fa-filter"></i> ${totalCount} huérfanos ocultos por filtros. Quitá el filtro de "datos de prueba" o cambiá la búsqueda para verlos.</div>`;
+                }
+                return;
+            }
+
+            // Opciones para reasignar (códigos válidos de promotores y coaches activos)
+            const promotorOptions = state.promoters
+                .filter(p => p.status !== 'inactive')
+                .map(p => ({ code: p.companyCode || p.promotorCode, name: p.promoterName || p.email }))
+                .filter(o => o.code);
+            const coachOptions = state.coaches
+                .filter(c => c.status !== 'inactive')
+                .map(c => ({ code: c.companyCode || c.agentTeamCode, name: c.coachName || c.email }))
+                .filter(o => o.code);
+
+            container.innerHTML = filtered.map(o => {
+                const safeEmail = escapeHtml(o.email);
+                const eid = 'orphan-' + o.email.replace(/[@.+]/g, '_');
+                const opts = (o.role === 'coach' ? promotorOptions : coachOptions);
+                const optsHtml = '<option value="">— Seleccionar —</option>' +
+                    opts.map(opt => `<option value="${escapeHtml(opt.code)}">${escapeHtml(opt.name)} (${escapeHtml(opt.code)})</option>`).join('');
+                const targetLabel = o.role === 'coach' ? 'Promotor' : 'Coach';
+                const roleEmoji = o.role === 'coach' ? '🧑‍🏫' : '👤';
+
+                return `
+                <div style="display:grid; grid-template-columns:1fr auto; align-items:center; gap:10px; padding:12px 14px; background:rgba(245,158,11,0.05); border-radius:8px; margin-bottom:6px; border:1px solid rgba(245,158,11,0.25);">
+                    <div>
+                        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:4px;">
+                            <span style="font-size:13px; font-weight:600; color:var(--white);">${roleEmoji} ${escapeHtml(o.name)}</span>
+                            <span style="font-size:11px; color:var(--slate);">${safeEmail}</span>
+                            <span style="font-size:11px; color:var(--gold);">🔑 ${escapeHtml(o.companyCode)}</span>
+                            <span style="font-size:10px; padding:2px 8px; background:rgba(245,158,11,0.15); color:var(--orange); border-radius:10px; font-weight:700;">👻 HUÉRFANO</span>
+                        </div>
+                        <div style="font-size:11px; color:var(--orange); margin-bottom:6px;">${escapeHtml(o.reason)}</div>
+                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                            <span style="font-size:11px; color:var(--slate);">Reasignar a ${targetLabel}:</span>
+                            <select id="${eid}-sel" style="font-size:12px; padding:4px 8px; min-width:200px;">${optsHtml}</select>
+                        </div>
+                    </div>
+                    <button class="btn btn-green btn-sm" onclick="reassignOrphan('${safeEmail}','${o.role}','${eid}')">
+                        <i class="fa fa-link"></i> Reasignar
+                    </button>
+                </div>`;
+            }).join('');
+        }
+
+        // Carga TODOS los inactivos relevantes para este director.
+        // Estrategia amplia: status==inactive en cada collection, luego filtrar
+        // client-side por: directorCode==dc OR promotorTeamCode/teamCode in scope.
+        // Captura legacy data sin directorCode pero con códigos viejos.
+        window.renderInactivosCard = async function () {
+            const container = document.getElementById('inactivos-list');
+            if (!container) return;
+            const dc = state.directorCode;
+            if (!dc) {
+                container.innerHTML = '<div class="empty-state"><i class="fa fa-circle-info"></i> Configura tu Código de Director primero.</div>';
+                return;
+            }
+            container.innerHTML = '<div class="empty-state"><i class="fa fa-spinner fa-spin"></i> Cargando inactivos...</div>';
+
+            // Códigos del scope del director (para capturar legacy sin directorCode)
+            const myPromotorCodes = new Set();
+            state.promoters.forEach(p => {
+                if (p.companyCode) myPromotorCodes.add(p.companyCode);
+                if (p.promotorCode) myPromotorCodes.add(p.promotorCode);
+                if (p.promotorNum) myPromotorCodes.add(`TEAM-PROMOTOR-${p.promotorNum}`);
+            });
+            const myCoachCodes = new Set();
+            state.coaches.forEach(c => {
+                if (c.companyCode) myCoachCodes.add(c.companyCode);
+                if (c.agentTeamCode) myCoachCodes.add(c.agentTeamCode);
+                if (c.coachNum) myCoachCodes.add(`TEAM-COACH-${c.coachNum}`);
+            });
+
+            try {
+                const [pSnap, cSnap, uSnap] = await Promise.all([
+                    getDocs(query(collection(db, 'promoters'), where('status', '==', 'inactive'))),
+                    getDocs(query(collection(db, 'coaches'),   where('status', '==', 'inactive'))),
+                    getDocs(query(collection(db, 'users'),     where('status', '==', 'inactive')))
+                ]);
+
+                const inactivos = [];
+                pSnap.forEach(d => {
+                    const p = d.data();
+                    // Match: directorCode coincide, o legacy data del scope
+                    if (p.directorCode === dc) {
+                        inactivos.push({ role: 'promoter', email: d.id, ...p });
+                    }
+                });
+                cSnap.forEach(d => {
+                    const c = d.data();
+                    const inScope = c.directorCode === dc
+                        || (c.promotorTeamCode && myPromotorCodes.has(c.promotorTeamCode));
+                    if (inScope) {
+                        inactivos.push({ role: 'coach', email: d.id, ...c });
+                    }
+                });
+                uSnap.forEach(d => {
+                    const a = d.data();
+                    const inScope = a.directorCode === dc
+                        || (a.teamCode && myCoachCodes.has(a.teamCode));
+                    if (inScope) {
+                        inactivos.push({ role: 'agent', email: d.id, ...a });
+                    }
+                });
+
+                // Aplicar filtros: búsqueda + ocultar test data
+                const search = (document.getElementById('inactivos-search')?.value || '').toLowerCase();
+                const hideTest = document.getElementById('inactivos-hide-test')?.checked !== false; // default true
+                const totalCount = inactivos.length;
+                let filtered = inactivos;
+                if (hideTest) {
+                    filtered = filtered.filter(m => !/@(example|test)\.com$/i.test(m.email));
+                }
+                if (search) {
+                    filtered = filtered.filter(m => {
+                        const name = (m.promoterName || m.coachName || m.agentName || m.name || '').toLowerCase();
+                        return name.includes(search) || (m.email || '').toLowerCase().includes(search);
+                    });
+                }
+
+                // Update count badge
+                const countEl = document.getElementById('inactivos-count');
+                if (countEl) {
+                    if (totalCount === filtered.length) countEl.textContent = `(${filtered.length})`;
+                    else countEl.textContent = `(${filtered.length} de ${totalCount} — filtrados)`;
+                }
+
+                if (!filtered.length) {
+                    if (totalCount === 0) {
+                        container.innerHTML = '<div class="empty-state" style="padding:14px 0;color:var(--green);"><i class="fa fa-check-circle"></i> Sin miembros inactivos en tu equipo.</div>';
+                    } else {
+                        container.innerHTML = `<div class="empty-state" style="padding:14px 0;"><i class="fa fa-filter"></i> ${totalCount} inactivos ocultos por filtros. Quitá el filtro de "datos de prueba" o cambiá la búsqueda para verlos.</div>`;
+                    }
+                    return;
+                }
+
+                const roleEmojiMap = { promoter: '📊', coach: '🧑‍🏫', agent: '👤' };
+                const roleLabelMap = { promoter: 'Promotor', coach: 'Coach', agent: 'Agente' };
+
+                container.innerHTML = filtered.map(m => {
+                    const safeEmail = escapeHtml(m.email);
+                    const name = m.promoterName || m.coachName || m.agentName || m.name || '(sin nombre)';
+                    const code = m.companyCode || m.promotorCode || m.teamCode || '';
+                    const auditTxt = m.expulsadoAt
+                        ? `Expulsado ${new Date(m.expulsadoAt).toLocaleString('es-MX')}${m.expulsadoPor ? ' por ' + escapeHtml(m.expulsadoPor) : ''}${m.expulsadoMotivo ? ' (motivo: ' + escapeHtml(m.expulsadoMotivo) + ')' : ''}`
+                        : '⚠️ Sin registro de cuándo/por qué fue expulsado (datos pre-audit)';
+
+                    return `
+                    <div style="display:grid; grid-template-columns:1fr auto auto; align-items:center; gap:8px; padding:12px 14px; background:rgba(239,68,68,0.04); border-radius:8px; margin-bottom:6px; border:1px solid rgba(239,68,68,0.25);">
+                        <div>
+                            <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                                <span style="font-size:13px; font-weight:600; color:var(--white);">${roleEmojiMap[m.role]} ${escapeHtml(name)}</span>
+                                <span style="font-size:11px; color:var(--slate);">${safeEmail}</span>
+                                ${code ? `<span style="font-size:11px; color:var(--gold);">🔑 ${escapeHtml(code)}</span>` : ''}
+                                <span style="font-size:10px; padding:2px 8px; background:rgba(239,68,68,0.15); color:var(--red); border-radius:10px; font-weight:700; letter-spacing:1px;">${roleLabelMap[m.role]} INACTIVO</span>
+                            </div>
+                            <div style="font-size:11px; color:var(--slate); margin-top:4px; font-style:italic;">${auditTxt}</div>
+                        </div>
+                        <button class="btn btn-green btn-sm" onclick="reactivateMember('${safeEmail}','${m.role}')">
+                            <i class="fa fa-user-check"></i> Reactivar
+                        </button>
+                        <button class="btn btn-red btn-sm" onclick="deleteInactiveMember('${safeEmail}','${m.role}')" title="Borrar definitivamente — la persona podrá volver a registrarse desde cero">
+                            <i class="fa fa-trash"></i> Borrar
+                        </button>
+                    </div>`;
+                }).join('');
+            } catch (e) {
+                console.error('[renderInactivosCard]', e);
+                container.innerHTML = `<div class="empty-state">Error: ${escapeHtml(e.message)}</div>`;
+            }
+        };
+
+        window.reassignOrphan = async function (email, role, eid) {
+            const sel = document.getElementById(eid + '-sel');
+            const newCode = sel?.value;
+            if (!newCode) { alert('Seleccioná un padre antes de reasignar.'); return; }
+            const colMap = { coach: 'coaches', agent: 'users' };
+            const fieldMap = { coach: 'promotorTeamCode', agent: 'teamCode' };
+            const colName = colMap[role];
+            const fieldName = fieldMap[role];
+            if (!colName || !fieldName) { alert('Rol inválido.'); return; }
+            try {
+                await setDoc(doc(db, colName, email), {
+                    [fieldName]: newCode,
+                    reasignadoPor: user.email,
+                    reasignadoAt: nowISO()
+                }, { merge: true });
+                alert('✅ Reasignado correctamente.');
+                renderOrphans();
+            } catch (err) { alert('Error: ' + err.message); }
+        };
+
+        function renderPendingList() {
+            const container = document.getElementById('pending-list');
+            if (!container) return;
+            if (!pendingUsers.length) {
+                container.innerHTML = '<div class="empty-state"><i class="fa fa-inbox"></i>No hay solicitudes pendientes.</div>';
+                return;
+            }
+            container.innerHTML = pendingUsers.map(u => `
+                <div style="display:flex; justify-content:space-between; align-items:center; padding:12px 16px; background:rgba(255,255,255,0.04); border-radius:8px; margin-bottom:8px; border:1px solid rgba(255,255,255,0.08); flex-wrap:wrap; gap:10px;">
+                    <div>
+                        <div style="font-weight:600; font-size:13px;">${escapeHtml(u.name || u.email)}</div>
+                        <div style="font-size:11px; color:var(--slate); margin-top:2px;">${escapeHtml(u.email)}</div>
+                        <div style="font-size:12px; margin-top:4px;">Clave: <span style="font-size:16px; font-weight:800; color:var(--gold); letter-spacing:3px;">${escapeHtml(u.companyCode || '—')}</span></div>
+                    </div>
+                    <div style="display:flex; gap:8px;">
+                        <button class="btn btn-green btn-sm" onclick="openApproveModal('${escapeHtml(u.email)}')">
+                            <i class="fa fa-check"></i> Aprobar
+                        </button>
+                        <button class="btn btn-red btn-sm" onclick="rejectUser('${escapeHtml(u.email)}')">
+                            <i class="fa fa-times"></i> Rechazar
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function renderGestionAll() {
+            const container = document.getElementById('gestion-all-list');
+            if (!container) return;
+
+            const search = (document.getElementById('gestion-search')?.value || '').toLowerCase();
+            const roleFilter = document.getElementById('gestion-role-filter')?.value || '';
+            const promotorFilter = document.getElementById('gestion-promotor-filter')?.value || '';
+            let coachFilter = document.getElementById('gestion-coach-filter')?.value || '';
+
+            // ─── Repopular dropdowns de equipo (promotor + coach) ────────────────
+            // Preserva el valor seleccionado si sigue siendo válido. El dropdown
+            // de coach se cascadea: si hay promotor seleccionado, sólo muestra
+            // sus coaches. Si el coach actual ya no encaja, se resetea.
+            const _activePromoters = state.promoters
+                .filter(p => p.status !== 'inactive')
+                .sort((a, b) => (a.promoterName || '').localeCompare(b.promoterName || ''));
+            const promFilterEl = document.getElementById('gestion-promotor-filter');
+            if (promFilterEl) {
+                const _prev = promFilterEl.value;
+                promFilterEl.innerHTML = '<option value="">Todos los equipos promotor</option>' +
+                    _activePromoters.map(p => {
+                        const code = p.companyCode || p.promotorCode || '';
+                        const label = p.promoterName || p.email;
+                        return `<option value="${escapeHtml(code)}">📊 ${escapeHtml(label)} [${escapeHtml(code)}]</option>`;
+                    }).join('');
+                if (_activePromoters.some(p => (p.companyCode || p.promotorCode) === _prev)) {
+                    promFilterEl.value = _prev;
+                }
+            }
+
+            let _activeCoaches = state.coaches.filter(c => c.status !== 'inactive');
+            if (promotorFilter) {
+                _activeCoaches = _activeCoaches.filter(c => c.promotorTeamCode === promotorFilter);
+            }
+            _activeCoaches.sort((a, b) => (a.coachName || '').localeCompare(b.coachName || ''));
+            const coachFilterEl = document.getElementById('gestion-coach-filter');
+            if (coachFilterEl) {
+                const _prev = coachFilterEl.value;
+                coachFilterEl.innerHTML = '<option value="">Todos los equipos coach</option>' +
+                    _activeCoaches.map(c => {
+                        const code = c.companyCode || c.agentTeamCode || '';
+                        const label = c.coachName || c.email;
+                        return `<option value="${escapeHtml(code)}">🧑‍🏫 ${escapeHtml(label)} [${escapeHtml(code)}]</option>`;
+                    }).join('');
+                if (_activeCoaches.some(c => (c.companyCode || c.agentTeamCode) === _prev)) {
+                    coachFilterEl.value = _prev;
+                } else {
+                    // El coach previo no encaja con el nuevo cascade — resetear
+                    coachFilterEl.value = '';
+                    coachFilter = '';
+                }
+            }
+
+            // Build unified list (active members only — inactivos van en su propia card)
+            const all = [];
+
+            state.promoters.forEach(p => {
+                if (p.status === 'inactive') return;
+                all.push({
+                    role: 'promoter',
+                    name: p.promoterName || '',
+                    email: p.email,
+                    companyCode: p.companyCode || p.promotorCode || '',
+                    assignCode: p.directorCode || state.directorCode || ''
+                });
+            });
+
+            state.coaches.forEach(c => {
+                if (c.status === 'inactive') return;
+                all.push({
+                    role: 'coach',
+                    name: c.coachName || '',
+                    email: c.email,
+                    companyCode: c.companyCode || c.agentTeamCode || '',
+                    assignCode: c.promotorTeamCode || ''
+                });
+            });
+
+            const sortedAgents = [...state.agents].sort((a, b) => a.name.localeCompare(b.name));
+            sortedAgents.forEach(a => {
+                if (a.status === 'inactive') return;
+                all.push({
+                    role: 'agent',
+                    name: a.name || '',
+                    email: a.email || '',
+                    companyCode: a.companyCode || '',
+                    assignCode: a.teamCode || ''
+                });
+            });
+
+            // Apply filters
+            let filtered = all;
+            if (roleFilter) filtered = filtered.filter(m => m.role === roleFilter);
+
+            // Filtro por equipo promotor
+            //   promoter → coincide si su companyCode == filtro
+            //   coach    → coincide si su promotorTeamCode == filtro
+            //   agent    → coincide si su coach pertenece a ese promotor
+            if (promotorFilter) {
+                const _coachCodesUnderProm = state.coaches
+                    .filter(c => c.status !== 'inactive' && c.promotorTeamCode === promotorFilter)
+                    .map(c => c.companyCode || c.agentTeamCode || '')
+                    .filter(Boolean);
+                filtered = filtered.filter(m => {
+                    if (m.role === 'promoter') return m.companyCode === promotorFilter;
+                    if (m.role === 'coach') return m.assignCode === promotorFilter;
+                    if (m.role === 'agent') return _coachCodesUnderProm.includes(m.assignCode);
+                    return false;
+                });
+            }
+
+            // Filtro por equipo coach
+            //   coach    → coincide si su companyCode == filtro
+            //   agent    → coincide si su teamCode == filtro
+            //   promoter → no aplica, se excluye
+            if (coachFilter) {
+                filtered = filtered.filter(m => {
+                    if (m.role === 'coach') return m.companyCode === coachFilter;
+                    if (m.role === 'agent') return m.assignCode === coachFilter;
+                    return false;
+                });
+            }
+
+            if (search) filtered = filtered.filter(m =>
+                m.name.toLowerCase().includes(search) ||
+                m.email.toLowerCase().includes(search) ||
+                m.companyCode.toLowerCase().includes(search)
+            );
+
+            if (!filtered.length) {
+                container.innerHTML = '<div class="empty-state" style="padding:20px 0;"><i class="fa fa-users"></i> No hay miembros que coincidan.</div>';
+                return;
+            }
+
+            const assignLabelFor = { promoter: 'Cód. Director', coach: 'Cód. Promotor', agent: 'Cód. Coach' };
+            const roleBadgeColor = { promoter: 'var(--gold)', coach: 'var(--teal)', agent: 'var(--blue)' };
+
+            // Construye el dropdown contextual según el rol del miembro:
+            //   agent    → coaches activos de mi región (vinculo por teamCode)
+            //   coach    → promotores activos de mi región (vinculo por promotorTeamCode)
+            //   promoter → director (yo) — única opción
+            // Si currentValue apunta a alguien que ya no aparece (provisional, inactivo, legacy),
+            // se incluye igual marcado con 🚧 o ⚠️ para no perder la asignación.
+            function buildAssignOptions(role, currentValue) {
+                let opts = [];
+                if (role === 'agent') {
+                    opts = state.coaches
+                        .filter(c => c.status !== 'inactive')
+                        .map(c => {
+                            const code = c.companyCode || c.agentTeamCode || '';
+                            return { value: code, label: `🧑‍🏫 ${c.coachName || c.email}`, code };
+                        })
+                        .filter(o => o.value);
+                } else if (role === 'coach') {
+                    opts = state.promoters
+                        .filter(p => p.status !== 'inactive')
+                        .map(p => {
+                            const code = p.companyCode || p.promotorCode || '';
+                            return { value: code, label: `📊 ${p.promoterName || p.email}`, code };
+                        })
+                        .filter(o => o.value);
+                } else if (role === 'promoter') {
+                    const dc = state.directorCode || '';
+                    if (dc) {
+                        const region = state.regionName ? ' (' + state.regionName + ')' : '';
+                        opts = [{ value: dc, label: `📍 Director${region}`, code: dc }];
+                    }
+                }
+                opts.sort((a, b) => a.label.localeCompare(b.label));
+                // Si el assignCode actual no está entre las opciones (provisional, inactivo, legacy),
+                // se inserta como "extra" al principio para no romper la asignación al guardar.
+                const hasCurrent = opts.some(o => o.value === currentValue);
+                let extraOption = '';
+                if (currentValue && !hasCurrent) {
+                    const isProvisional = String(currentValue).startsWith('PROV-');
+                    const tag = isProvisional ? '🚧 PROVISIONAL' : '⚠️ Inactivo / desconocido';
+                    extraOption = `<option value="${escapeHtml(currentValue)}" selected>${tag} [${escapeHtml(currentValue)}]</option>`;
+                }
+                const placeholder = (!currentValue && opts.length > 0)
+                    ? `<option value="">— Seleccionar —</option>`
+                    : (!currentValue && opts.length === 0)
+                    ? `<option value="">— Sin opciones disponibles —</option>`
+                    : '';
+                const optionsHtml = opts.map(o =>
+                    `<option value="${escapeHtml(o.value)}" ${o.value === currentValue ? 'selected' : ''}>${escapeHtml(o.label)} [${escapeHtml(o.code)}]</option>`
+                ).join('');
+                return placeholder + extraOption + optionsHtml;
+            }
+            // Expongo a window para que updateAssignLabel pueda regenerar el dropdown
+            // cuando el director cambia el rol del miembro en el otro selector.
+            // Se reasigna en cada render de gestión, así siempre captura el state.coaches/promoters más reciente.
+            window._buildAssignOptions = buildAssignOptions;
+
+            container.innerHTML = filtered.map(m => {
+                const safeEmail = escapeHtml(m.email);
+                // eid incluye el rol porque un mismo email puede tener docs en
+                // multiples colecciones (ej. self-coach: /users/x + /coaches/x).
+                // Sin el sufijo de rol, las 2 filas tendrian IDs iguales y
+                // getElementById solo devolveria la primera → bug de role-mismatch.
+                const eid = m.email.replace(/[@.+]/g, '_') + '_' + m.role;
+                // Botón "+ Coach" aplica para:
+                //   - promotores → crea coach con promotorTeamCode = su propia clave (self)
+                //   - agentes    → crea coach con promotorTeamCode = el promotor de su coach actual
+                // En ambos casos: no aparece si ya existe doc de coach con su mismo email.
+                const _alreadyHasCoach = !!state.coachesMap[m.email];
+                let _selfCoachBtn = '';
+                if (!_alreadyHasCoach && (m.role === 'promoter' || m.role === 'agent')) {
+                    const _fn = m.role === 'promoter' ? 'createSelfCoachFromPromoter' : 'createSelfCoachFromAgent';
+                    _selfCoachBtn = `<button class="btn btn-sm" onclick="${_fn}('${safeEmail}')" title="Crear cuenta de coach con la misma clave/email" style="background:rgba(6,182,212,0.12); color:var(--teal); border:1px solid rgba(6,182,212,0.3);"><i class="fa fa-user-plus"></i> + Coach</button>`;
+                }
+                return `
+                <div style="display:grid; grid-template-columns:1fr auto auto auto; align-items:center; gap:10px; padding:12px 14px; background:rgba(255,255,255,0.02); border-radius:8px; margin-bottom:6px; border:1px solid rgba(255,255,255,0.06);">
+                    <div>
+                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; margin-bottom:6px;">
+                            <input id="name-inp-${eid}" value="${escapeHtml(m.name)}" placeholder="Nombre" style="font-weight:600; font-size:13px; width:190px; padding:5px 8px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:6px; color:var(--white);">
+                            <span style="font-size:11px; color:var(--slate);">${safeEmail}</span>
+                            <span style="font-size:11px; display:flex; align-items:center; gap:4px;">
+                                🔑 <input id="code-inp-${eid}" value="${escapeHtml(m.companyCode)}" placeholder="0000" maxlength="4" style="width:72px; font-weight:800; color:var(--gold); font-size:13px; letter-spacing:2px; padding:4px 8px; text-align:center; background:rgba(212,175,55,0.08); border:1px solid rgba(212,175,55,0.25); border-radius:6px;">
+                            </span>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                            <select id="role-sel-${eid}" onchange="updateAssignLabel('${safeEmail}','${m.role}')" style="font-size:12px; padding:4px 8px; background:rgba(255,255,255,0.05); border:1px solid rgba(255,255,255,0.1); border-radius:6px; color:var(--white); font-weight:600;">
+                                <option value="promoter" ${m.role === 'promoter' ? 'selected' : ''} style="background:#1e293b;">📊 Promotor</option>
+                                <option value="coach" ${m.role === 'coach' ? 'selected' : ''} style="background:#1e293b;">🧑‍🏫 Coach</option>
+                                <option value="agent" ${m.role === 'agent' ? 'selected' : ''} style="background:#1e293b;">👤 Agente</option>
+                            </select>
+                            <span id="assign-lbl-${eid}" style="font-size:11px; color:var(--slate); white-space:nowrap;">${escapeHtml(assignLabelFor[m.role])}:</span>
+                            <select id="assign-inp-${eid}" data-role="${m.role}" style="min-width:230px; max-width:300px; font-size:12px; padding:4px 8px; color:var(--teal); background:rgba(6,182,212,0.06); border:1px solid rgba(6,182,212,0.2); border-radius:6px;">${buildAssignOptions(m.role, m.assignCode)}</select>
+                        </div>
+                    </div>
+                    ${_selfCoachBtn}
+                    <button class="btn btn-green btn-sm" onclick="saveMemberChanges('${safeEmail}','${m.role}')">
+                        <i class="fa fa-save"></i> Guardar
+                    </button>
+                    <button class="btn btn-red btn-sm" onclick="expelMember('${safeEmail}','${m.role}')">
+                        <i class="fa fa-user-minus"></i> Expulsar
+                    </button>
+                </div>`;
+            }).join('');
+        }
+
+        window.updateAssignLabel = function (email, originalRole) {
+            // eid debe incluir el rol original para no colisionar con otra fila
+            // del mismo email pero distinto rol (ej. self-coach).
+            const eid = email.replace(/[@.+]/g, '_') + '_' + originalRole;
+            const role = document.getElementById('role-sel-' + eid)?.value;
+            const lblEl = document.getElementById('assign-lbl-' + eid);
+            const selEl = document.getElementById('assign-inp-' + eid);
+            if (!lblEl || !selEl) return;
+            const labels = { promoter: 'Cód. Director', coach: 'Cód. Promotor', agent: 'Cód. Coach' };
+            lblEl.textContent = (labels[role] || 'Asignado a') + ':';
+            // Regenerar opciones del dropdown contextual al rol nuevo (sin valor previo: forzar re-elegir).
+            // buildAssignOptions vive en el closure de renderGestionAll, así que lo expongo via window:
+            if (typeof window._buildAssignOptions === 'function') {
+                selEl.innerHTML = window._buildAssignOptions(role, '');
+            }
+            selEl.dataset.role = role;
+            if (role === 'promoter') selEl.style.color = 'var(--gold)';
+            else if (role === 'coach') selEl.style.color = 'var(--teal)';
+            else if (role === 'agent') selEl.style.color = 'var(--blue)';
+        };
+
+        window.saveMemberChanges = async function (email, originalRole) {
+            // eid incluye el rol original para no colisionar con otra fila
+            // del mismo email pero distinto rol (ej. self-coach).
+            const eid = email.replace(/[@.+]/g, '_') + '_' + originalRole;
+            const newRole    = document.getElementById('role-sel-'  + eid)?.value;
+            const newName    = (document.getElementById('name-inp-' + eid)?.value || '').trim();
+            const newCode    = (document.getElementById('code-inp-' + eid)?.value || '').trim();
+            const newAssign  = (document.getElementById('assign-inp-'+ eid)?.value || '').trim();
+
+            if (!newName) { alert('El nombre no puede estar vacío.'); return; }
+            if (newCode && !/^\d{4}$/.test(newCode)) { alert('La clave debe ser exactamente 4 dígitos numéricos.'); return; }
+
+            try {
+                if (newRole === originalRole) {
+                    // ── Same role: update fields in place ────────────────────────────────
+                    const colName = { promoter: 'promoters', coach: 'coaches', agent: 'users' }[newRole];
+                    const updates = {};
+                    if (newRole === 'promoter') {
+                        updates.promoterName  = newName;
+                        if (newCode)   { updates.companyCode = newCode; updates.promotorCode = newCode; }
+                        if (newAssign)   updates.directorCode = newAssign;
+                    } else if (newRole === 'coach') {
+                        updates.coachName = newName;
+                        if (newCode)   { updates.companyCode = newCode; updates.teamCode = newCode; }
+                        if (newAssign)   updates.promotorTeamCode = newAssign;
+                    } else {
+                        updates.agentName = newName;
+                        if (newCode)   updates.companyCode = newCode;
+                        if (newAssign)   updates.teamCode = newAssign;
+                    }
+                    await setDoc(doc(db, colName, email), updates, { merge: true });
+                    alert(`✅ Cambios guardados para ${newName}.`);
+
+                } else {
+                    // ── Role changed: migrate ─────────────────────────────────────────
+                    const roleLabels = { promoter: 'Promotor', coach: 'Coach', agent: 'Agente' };
+                    if (!confirm(`¿Cambiar rol de "${newName}" de ${roleLabels[originalRole]} → ${roleLabels[newRole]}?\n\nSu registro anterior quedará inactivo. Los miembros que le estaban asignados quedan huérfanos — deberás reasignarlos manualmente.`)) return;
+
+                    const colOld = { promoter: 'promoters', coach: 'coaches', agent: 'users' }[originalRole];
+                    const colNew = { promoter: 'promoters', coach: 'coaches', agent: 'users' }[newRole];
+
+                    // Grab old doc for reference
+                    const oldSnap = await getDoc(doc(db, colOld, email));
+                    const oldData = oldSnap.exists() ? oldSnap.data() : {};
+
+                    const finalCode = newCode || oldData.companyCode || '';
+
+                    const newDocData = {
+                        email,
+                        status: 'active',
+                        type: newRole,
+                        companyCode: finalCode,
+                        migratedFrom: originalRole,
+                        migratedAt: new Date().toISOString()
+                    };
+
+                    if (newRole === 'promoter') {
+                        newDocData.promoterName  = newName;
+                        newDocData.promotorCode  = finalCode;
+                        newDocData.directorCode  = newAssign || state.directorCode || '';
+                    } else if (newRole === 'coach') {
+                        newDocData.coachName         = newName;
+                        newDocData.teamCode          = finalCode;   // agents link via this
+                        newDocData.promotorTeamCode  = newAssign || '';
+                    } else {
+                        newDocData.agentName = newName;
+                        newDocData.teamCode  = newAssign || '';     // links to coach's code
+                    }
+
+                    // Write new role doc, deactivate old (con audit)
+                    await setDoc(doc(db, colNew, email), newDocData, { merge: true });
+                    await setDoc(doc(db, colOld, email), {
+                        status: 'inactive',
+                        expulsadoPor: user.email,
+                        expulsadoAt: nowISO(),
+                        expulsadoMotivo: `rol_change_${originalRole}_to_${newRole}`
+                    }, { merge: true });
+
+                    alert(`✅ ${newName} migrado a ${roleLabels[newRole]}.\nMiembros anteriores quedan huérfanos — reasígnalos desde esta tabla.`);
+                }
+            } catch (err) {
+                alert('Error al guardar: ' + err.message);
+            }
+        };
+
+        window.expelMember = async function (email, role) {
+            const member = role === 'promoter' ? state.promotersMap[email]
+                         : role === 'coach'    ? state.coachesMap[email]
+                         : state.agents.find(a => a.email === email);
+            const name = member
+                ? (member.promoterName || member.coachName || member.name || email)
+                : email;
+            const roleLabel = { promoter: 'promotor', coach: 'coach', agent: 'agente' }[role] || role;
+            if (!confirm(`¿Expulsar al ${roleLabel} "${name}"?\n\nSu historial de datos se conservará pero perderá acceso al sistema.`)) return;
+            try {
+                const colName = { promoter: 'promoters', coach: 'coaches', agent: 'users' }[role];
+                // AUDIT: dejar rastro de quién/cuándo/por qué para diagnóstico futuro
+                await setDoc(doc(db, colName, email), {
+                    status: 'inactive',
+                    expulsadoPor: user.email,
+                    expulsadoAt: nowISO(),
+                    expulsadoMotivo: 'expulsar_member'
+                }, { merge: true });
+                alert(`✅ ${name} ha sido expulsado. Sus datos se conservan.`);
+            } catch (err) { alert('Error: ' + err.message); }
+        };
+
+        window.openApproveModal = function (email) {
+            const pending = pendingUsers.find(u => u.email === email);
+            if (!pending) return;
+            currentApproval = pending;
+
+            const coachOpts = state.coaches
+                .sort((a, b) => a.coachName.localeCompare(b.coachName))
+                .map(c => `<option value="${escapeHtml(c.email)}">${escapeHtml(c.coachName)} [${escapeHtml(c.companyCode || c.agentTeamCode || c.email)}]</option>`)
+                .join('');
+            const promOpts = state.promoters
+                .sort((a, b) => a.promoterName.localeCompare(b.promoterName))
+                .map(p => `<option value="${escapeHtml(p.email)}">${escapeHtml(p.promoterName)} [${escapeHtml(p.companyCode || p.promotorCode || p.email)}]</option>`)
+                .join('');
+
+            const formHtml = `
+                <div style="background:rgba(255,255,255,0.04); border-radius:8px; padding:14px; font-size:13px; line-height:1.9;">
+                    <div><strong style="color:var(--gold);">Nombre:</strong> ${escapeHtml(pending.name || '—')}</div>
+                    <div><strong style="color:var(--gold);">Email:</strong> ${escapeHtml(pending.email)}</div>
+                    <div><strong style="color:var(--gold);">Región:</strong> ${escapeHtml(pending.region || '—')}</div>
+                    <div><strong style="color:var(--gold);">Clave:</strong> <span style="font-size:18px; font-weight:800; letter-spacing:4px;">${escapeHtml(pending.companyCode || '—')}</span></div>
+                </div>
+
+                <div>
+                    <label class="field-label">Asignar como</label>
+                    <select id="approve-role-sel" onchange="updateApprovalFields()" style="font-weight:700;">
+                        <option value="">-- Seleccionar rol --</option>
+                        <option value="agent">👤 Agente</option>
+                        <option value="coach">🧑‍🏫 Coach</option>
+                        <option value="promoter">📊 Promotor</option>
+                    </select>
+                </div>
+
+                <div id="approve-field-agent" style="display:none;">
+                    <label class="field-label">Asignar al equipo del Coach</label>
+                    <select id="approve-coach-sel">
+                        <option value="">-- Seleccionar coach --</option>
+                        ${coachOpts}
+                    </select>
+                </div>
+
+                <div id="approve-field-coach" style="display:none;">
+                    <label class="field-label">Asignar al equipo del Promotor</label>
+                    <select id="approve-promotor-sel">
+                        <option value="">-- Seleccionar promotor --</option>
+                        ${promOpts}
+                    </select>
+                </div>
+
+                <div id="approve-field-promoter" style="display:none; background:rgba(212,175,55,0.1); border:1px solid rgba(212,175,55,0.3); border-radius:8px; padding:12px; font-size:12px; color:var(--gold-l); line-height:1.6;">
+                    <i class="fa fa-circle-info"></i> El promotor quedará vinculado a tu código de director <strong>(${escapeHtml(state.directorCode || '—')})</strong>.
+                    Su clave <strong>${escapeHtml(pending.companyCode || '—')}</strong> será su código de equipo para coaches.
+                </div>`;
+
+            document.getElementById('approve-modal-content').innerHTML = formHtml;
+            document.getElementById('approve-modal').classList.add('open');
+        };
+
+        window.updateApprovalFields = function () {
+            const role = document.getElementById('approve-role-sel')?.value;
+            ['agent', 'coach', 'promoter'].forEach(r => {
+                const el = document.getElementById('approve-field-' + r);
+                if (el) el.style.display = (role === r) ? 'block' : 'none';
+            });
+        };
+
+        window.closeApproveModal = function () {
+            document.getElementById('approve-modal').classList.remove('open');
+            currentApproval = null;
+        };
+
+        window.confirmApproval = async function () {
+            if (!currentApproval) return;
+            const btn = document.getElementById('approve-confirm-btn');
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa fa-spinner fa-spin"></i> Procesando...';
+
+            try {
+                const { email, name, companyCode } = currentApproval;
+                const role = document.getElementById('approve-role-sel')?.value;
+
+                if (!role) { alert('Por favor selecciona un rol.'); btn.disabled = false; btn.innerHTML = '<i class="fa fa-check"></i> Aprobar y Asignar'; return; }
+                if (!companyCode) { alert('Esta solicitud no tiene clave de agente. Recházala y pide al usuario que se registre de nuevo.'); btn.disabled = false; btn.innerHTML = '<i class="fa fa-check"></i> Aprobar y Asignar'; return; }
+
+                // ─── DUPLICATE GUARD ─────────────────────────────────────────────
+                // Bloqueamos si ya existe un doc activo en la colección destino,
+                // ya sea por email (doc.id) o por companyCode (clave de agente).
+                // Roles cruzados (ya es coach y se aprueba como promotor) están
+                // permitidos a propósito: una persona puede tener varios roles.
+                // Los expulsados (status:'inactive') NO bloquean — se re-aprueban
+                // y vuelven a quedar activos.
+                const _roleColMap = { agent: 'users', coach: 'coaches', promoter: 'promoters' };
+                const _roleLabelMap = { agent: 'agente', coach: 'coach', promoter: 'promotor' };
+                const _nameField = { agent: 'agentName', coach: 'coachName', promoter: 'promoterName' };
+                const _targetCol = _roleColMap[role];
+                const _myDir = state.directorCode || '';
+
+                // 1) Email duplicado (doc.id global)
+                const _existingByEmail = await getDoc(doc(db, _targetCol, email));
+                if (_existingByEmail.exists() && _existingByEmail.data().status === 'active') {
+                    alert(`⚠️ ${name || email} ya está aprobado como ${_roleLabelMap[role]}.\n\nNo se permiten duplicados del mismo rol. Si necesitás reasignarlo a otro equipo, hacelo desde la pestaña Gestión.`);
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fa fa-check"></i> Aprobar y Asignar';
+                    return;
+                }
+
+                // 2) Clave (companyCode) duplicada en el mismo director/tenant
+                //    (entre tenants distintos puede coincidir; eso es válido)
+                const _byCodeSnap = await getDocs(query(collection(db, _targetCol), where('companyCode', '==', companyCode)));
+                const _codeConflict = _byCodeSnap.docs.find(d => {
+                    const x = d.data();
+                    return x.status === 'active' && (x.directorCode || '') === _myDir;
+                });
+                if (_codeConflict) {
+                    const _conflictData = _codeConflict.data();
+                    const _conflictName = _conflictData[_nameField[role]] || _conflictData.email || _codeConflict.id;
+                    alert(`⚠️ La clave ${companyCode} ya está siendo usada por otro ${_roleLabelMap[role]}: ${_conflictName}.\n\nNo se permiten códigos duplicados del mismo rol. Pedile al usuario que se registre con una clave distinta.`);
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fa fa-check"></i> Aprobar y Asignar';
+                    return;
+                }
+
+                if (role === 'agent') {
+                    const coachEmail = document.getElementById('approve-coach-sel')?.value;
+                    if (!coachEmail) { alert('Por favor selecciona un coach.'); btn.disabled = false; btn.innerHTML = '<i class="fa fa-check"></i> Aprobar y Asignar'; return; }
+                    const coach = state.coachesMap[coachEmail];
+                    if (!coach) { alert('Coach no encontrado.'); btn.disabled = false; btn.innerHTML = '<i class="fa fa-check"></i> Aprobar y Asignar'; return; }
+                    // Agent's teamCode = coach's companyCode (4-digit) — links agent to coach's team
+                    const coachTeamCode = coach.companyCode || coach.agentTeamCode;
+                    await setDoc(doc(db, "users", email), {
+                        agentName: name,
+                        email: email,
+                        companyCode: companyCode,
+                        teamCode: coachTeamCode,
+                        directorCode: state.directorCode || '',   // multi-tenant
+                        regionName: state.regionName || '',
+                        status: 'active',
+                        type: 'agent',
+                        approvedBy: user.email,
+                        approvedAt: new Date().toISOString()
+                    }, { merge: true });
+
+                } else if (role === 'coach') {
+                    const promEmail = document.getElementById('approve-promotor-sel')?.value;
+                    if (!promEmail) { alert('Por favor selecciona un promotor.'); btn.disabled = false; btn.innerHTML = '<i class="fa fa-check"></i> Aprobar y Asignar'; return; }
+                    const promoter = state.promotersMap[promEmail];
+                    if (!promoter) { alert('Promotor no encontrado.'); btn.disabled = false; btn.innerHTML = '<i class="fa fa-check"></i> Aprobar y Asignar'; return; }
+                    // Coach's teamCode = their own companyCode — agents will use this to link to them
+                    // Coach's promotorTeamCode = promoter's companyCode — links coach to promoter's team
+                    const promTeamCode = promoter.companyCode || promoter.promotorCode;
+                    await setDoc(doc(db, "coaches", email), {
+                        coachName: name,
+                        email: email,
+                        companyCode: companyCode,
+                        teamCode: companyCode,       // agents link to coach using this
+                        promotorTeamCode: promTeamCode,
+                        directorCode: state.directorCode,   // stored for future direct queries
+                        regionName: state.regionName || '',
+                        status: 'active',
+                        type: 'coach',
+                        approvedBy: user.email,
+                        approvedAt: new Date().toISOString()
+                    }, { merge: true });
+
+                } else if (role === 'promoter') {
+                    // Promoter's promotorCode = their own companyCode — coaches will use this to link to them
+                    await setDoc(doc(db, "promoters", email), {
+                        promoterName: name,
+                        email: email,
+                        companyCode: companyCode,
+                        promotorCode: companyCode,   // coaches link to promoter using this
+                        directorCode: state.directorCode,
+                        regionName: state.regionName || '',
+                        status: 'active',
+                        type: 'promoter',
+                        approvedBy: user.email,
+                        approvedAt: new Date().toISOString()
+                    }, { merge: true });
+                }
+
+                await deleteDoc(doc(db, "pending_users", email));
+                closeApproveModal();
+                const roleLabel = { agent: 'Agente', coach: 'Coach', promoter: 'Promotor' }[role];
+                alert(`✅ ${escapeHtml(name || email)} aprobado como ${roleLabel} (clave: ${companyCode}).`);
+
+            } catch (err) {
+                alert('Error al aprobar: ' + err.message);
+            }
+            btn.disabled = false;
+            btn.innerHTML = '<i class="fa fa-check"></i> Aprobar y Asignar';
+        };
+
+        window.rejectUser = async function (email) {
+            const pending = pendingUsers.find(u => u.email === email);
+            const name = pending ? (pending.name || email) : email;
+            if (!confirm(`¿Rechazar la solicitud de ${name}? Esta acción no se puede deshacer.`)) return;
+            try {
+                await deleteDoc(doc(db, "pending_users", email));
+            } catch (err) { alert('Error: ' + err.message); }
+        };
+
+        window.reactivateMember = async function (email, role) {
+            const colMap = { promoter: 'promoters', coach: 'coaches', agent: 'users' };
+            const colName = colMap[role];
+            if (!colName) { alert('Rol inválido.'); return; }
+            const roleLabel = { promoter: 'promotor', coach: 'coach', agent: 'agente' }[role] || role;
+            if (!confirm(`¿Reactivar a este ${roleLabel}? Volverá a tener acceso a la app y aparecerá en los reportes.`)) return;
+            try {
+                // Marcamos status:active y limpiamos los campos de audit de expulsión.
+                // Guardamos un rastro de quién lo reactivó por si hay que auditar.
+                await setDoc(doc(db, colName, email), {
+                    status: 'active',
+                    expulsadoPor: null,
+                    expulsadoAt: null,
+                    expulsadoMotivo: null,
+                    reactivadoPor: user.email,
+                    reactivadoAt: nowISO()
+                }, { merge: true });
+                alert('✅ Miembro reactivado. Ya puede entrar a la app.');
+                // Refrescar las 3 vistas (gestion principal + huérfanos + inactivos)
+                if (typeof renderGestionAll === 'function') renderGestionAll();
+                if (typeof renderOrphans === 'function') renderOrphans();
+                if (typeof renderInactivosCard === 'function') renderInactivosCard();
+            } catch (err) { alert('Error: ' + err.message); }
+        };
+
+        // Borra DEFINITIVAMENTE el doc del usuario inactivo. Después la persona puede
+        // volver a registrarse desde cero (loguea → registro → pending_users → director aprueba).
+        // ⚠ Pierde karma, karmaLog, entries y todo el historial. No se puede deshacer.
+        window.deleteInactiveMember = async function (email, role) {
+            const colMap = { promoter: 'promoters', coach: 'coaches', agent: 'users' };
+            const colName = colMap[role];
+            if (!colName) { alert('Rol inválido.'); return; }
+            const roleLabel = { promoter: 'promotor', coach: 'coach', agent: 'agente' }[role] || role;
+            if (!confirm(`⚠️ ¿BORRAR DEFINITIVAMENTE a este ${roleLabel}?\n\nEsta acción:\n• Borra todos sus datos (karma, bitácora, historial)\n• Permite que la persona vuelva a registrarse desde cero\n• NO se puede deshacer\n\n¿Continuar?`)) return;
+            // Doble confirmación porque es destructivo
+            if (!confirm(`Última confirmación: borrar permanentemente a "${email}".\n\n¿Estás 100% seguro?`)) return;
+            try {
+                await deleteDoc(doc(db, colName, email));
+                alert(`✅ Borrado. Si esta persona se loguea en la app, podrá registrarse de nuevo desde cero.`);
+                // Refrescar las 3 vistas
+                if (typeof renderGestionAll === 'function') renderGestionAll();
+                if (typeof renderOrphans === 'function') renderOrphans();
+                if (typeof renderInactivosCard === 'function') renderInactivosCard();
+            } catch (err) { alert('Error: ' + err.message); }
+        };
+
+        // Helper común para los 3 expel-* (audit fields)
+        async function _expelWithAudit(collectionName, email, motivo) {
+            await setDoc(doc(db, collectionName, email), {
+                status: 'inactive',
+                expulsadoPor: user.email,
+                expulsadoAt: nowISO(),
+                expulsadoMotivo: motivo
+            }, { merge: true });
+        }
+
+        window.expelAgent = async function (agentEmail) {
+            if (!agentEmail) return;
+            const agent = state.agents.find(a => a.email === agentEmail);
+            const name = agent ? agent.name : agentEmail;
+            if (!confirm(`¿Expulsar al agente "${name}"?\n\nSu historial de datos se conservará pero perderá acceso al sistema.`)) return;
+            try {
+                await _expelWithAudit('users', agentEmail, 'expulsar_agent');
+                alert(`✅ ${name} ha sido expulsado. Sus datos se conservan.`);
+            } catch (err) { alert('Error: ' + err.message); }
+        };
+
+        window.expelCoach = async function (coachEmail) {
+            const coach = state.coachesMap[coachEmail];
+            const name = coach ? coach.coachName : coachEmail;
+            if (!confirm(`¿Expulsar al coach "${name}"?\n\nSus agentes quedarán sin coach. Sus datos se conservan.`)) return;
+            try {
+                await _expelWithAudit('coaches', coachEmail, 'expulsar_coach');
+                alert(`✅ ${name} ha sido expulsado. Sus datos se conservan.`);
+            } catch (err) { alert('Error: ' + err.message); }
+        };
+
+        window.expelPromoter = async function (promEmail) {
+            const promoter = state.promotersMap[promEmail];
+            const name = promoter ? promoter.promoterName : promEmail;
+            if (!confirm(`¿Expulsar al promotor "${name}"?\n\nSus coaches quedarán sin promotor. Sus datos se conservan.`)) return;
+            try {
+                await _expelWithAudit('promoters', promEmail, 'expulsar_promoter');
+                alert(`✅ ${name} ha sido expulsado. Sus datos se conservan.`);
+            } catch (err) { alert('Error: ' + err.message); }
+        };
+
+
     </script>
 </body>
 
