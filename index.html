@@ -6752,13 +6752,13 @@
         // state.agents = array de objetos { name, email, teamCode, ... }.
         // Para el refactor, usamos a.email como agentId (clave única).
         // Display name viene de state.agentDetails[id].agentName.
-        function getBitAgentList() { return state.agents.map(a => a.email); } // array de IDs
+        function _dir_getBitAgentList() { return state.agents.map(a => a.email); } // array de IDs
         function getBitAgentName(agentId) {
             return state.agentDetails?.[agentId]?.agentName
                 || state.agents.find(a => a.email === agentId)?.name
                 || agentId;
         }
-        function getBitAgentCoach(agentId) {
+        function _dir_getBitAgentCoach(agentId) {
             // Primero buscar en state.agentDetails (poblada por path 1, batched query)
             if (state.agentDetails?.[agentId]?.coachEmail) return state.agentDetails[agentId].coachEmail;
             // Fallback: state.agentCoachMap (poblada por path 2, legacy embedded)
@@ -6770,7 +6770,7 @@
             return coach ? coach.email : null;
         }
 
-        function refreshBitCoachFilter() {
+        function _dir_refreshBitCoachFilter() {
             const sel = document.getElementById('bit-coach-filter');
             if (!sel) return;
             const prev = sel.value;
@@ -6784,9 +6784,9 @@
             const coachF = document.getElementById('bit-coach-filter').value;
             const sel = document.getElementById('bit-agent');
             const prev = sel.value;
-            const agentIds = getBitAgentList();
+            const agentIds = _dir_getBitAgentList();
             const filtered = coachF
-                ? agentIds.filter(id => getBitAgentCoach(id) === coachF)
+                ? agentIds.filter(id => _dir_getBitAgentCoach(id) === coachF)
                 : agentIds;
             // Value = agentId (único), label = agentName (display)
             sel.innerHTML = '<option value="">— Selecciona agente —</option>' +
@@ -6823,19 +6823,19 @@
             const mes = MONTHS_ES[month - 1] + ' ' + year;
             const semIdx = parseInt(semana) - 1;
             const weekDays = bitCurrentWeeks[semIdx] || [];
-            buildBitWeekTable(weekDays, agentId, mes, semana);
+            _dir_buildBitWeekTable(weekDays, agentId, mes, semana);
             const info = document.getElementById('bit-week-info');
             if (weekDays.length && agentId) {
                 info.textContent = `📅 ${mes} · Semana ${semana} de ${bitCurrentWeeks.length} · Días: ${weekDays.map(d => d.dayName + ' ' + d.date).join(', ')}`;
             } else { info.textContent = ''; }
-            updateBitMonthTotals(agentId, mes);
+            _dir_updateBitMonthTotals(agentId, mes);
         };
 
-        function buildBitWeekTable(weekDays, agentId, mes, semana) {
+        function _dir_buildBitWeekTable(weekDays, agentId, mes, semana) {
             const tbody = document.getElementById('bit-week-body');
             if (!weekDays.length || !agentId) {
                 tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--slate);padding:20px;">${agentId ? '' : 'Selecciona un agente para ver su bitácora.'}</td></tr>`;
-                resetBitTotals(); return;
+                _dir_resetBitTotals(); return;
             }
             const entry = state.entries.find(e => (e.agentId || e.agent) === agentId && e.mes === mes && e.semana == semana);
             const diasMap = {};
@@ -6863,8 +6863,8 @@
             document.getElementById('bit-tt-$').textContent = '$' + semPrima.toFixed(0);
         }
 
-        function updateBitMonthTotals(agentId, mes) {
-            if (!agentId) { resetBitMonthTotals(); return; }
+        function _dir_updateBitMonthTotals(agentId, mes) {
+            if (!agentId) { _dir_resetBitMonthTotals(); return; }
             const monthEntries = state.entries.filter(e => (e.agentId || e.agent) === agentId && e.mes === mes);
             let mP = 0, mE = 0, mC = 0, mV = 0, mS = 0, mPrima = 0;
             monthEntries.forEach(e => {
@@ -6878,13 +6878,13 @@
             document.getElementById('bit-ttm-$').textContent = '$' + mPrima.toFixed(0);
         }
 
-        function resetBitTotals() {
+        function _dir_resetBitTotals() {
             ['P', 'E', 'C', 'V', 'S'].forEach(c => { document.getElementById(`bit-tt-${c}`).textContent = '0'; });
             document.getElementById('bit-tt-$').textContent = '$0';
-            resetBitMonthTotals();
+            _dir_resetBitMonthTotals();
         }
 
-        function resetBitMonthTotals() {
+        function _dir_resetBitMonthTotals() {
             ['P', 'E', 'C', 'V', 'S'].forEach(c => { document.getElementById(`bit-ttm-${c}`).textContent = '0'; });
             document.getElementById('bit-ttm-$').textContent = '$0';
         }
@@ -6895,7 +6895,7 @@
             const coachF = document.getElementById('bit-coach-filter').value;
             const agentF = document.getElementById('bit-agent').value; // agentId
             let filtered = state.entries;
-            if (coachF) filtered = filtered.filter(e => getBitAgentCoach(e.agentId || e.agent) === coachF);
+            if (coachF) filtered = filtered.filter(e => _dir_getBitAgentCoach(e.agentId || e.agent) === coachF);
             if (agentF) filtered = filtered.filter(e => (e.agentId || e.agent) === agentF);
             if (!filtered.length) {
                 grid.innerHTML = '<div class="empty-state"><i class="fa fa-inbox"></i> No hay entradas.</div>';
@@ -6929,16 +6929,16 @@
             if (m) m.classList.remove('open'); // modal eliminado, defensivo
         };
 
-        function initBitacora() {
+        function _dir_initBitacora() {
             updateBitCalendar();
-            refreshBitCoachFilter();
+            _dir_refreshBitCoachFilter();
         }
 
         window.saveState = async function () {
             await saveDirectorData();
         }
 
-        function refreshAll() {
+        function _dir_refreshAll() {
             document.getElementById('director-display').textContent = 'Director: ' + (state.directorName || '—');
             refreshPromotorSelects();
             refreshCoachFilters();
@@ -6948,8 +6948,8 @@
             renderKPIs();
             refreshMonthFilters();
             renderCoachReportes();
-            if (document.getElementById('tab-gestion')?.classList.contains('active')) renderGestion();
-            refreshBitCoachFilter();
+            if (document.getElementById('tab-gestion')?.classList.contains('active')) _dir_renderGestion();
+            _dir_refreshBitCoachFilter();
         }
 
 
@@ -7272,7 +7272,7 @@
         // (pendingUsers y currentApproval ya están declarados arriba en el código
         // original del superdirector — no re-declarar acá para evitar SyntaxError.)
 
-        function startListeningPending() {
+        function _dir_startListeningPending() {
             const pendQ = collection(db, "pending_users");
             const unsubPending = onSnapshot(pendQ, (snapshot) => {
                 pendingUsers = [];
@@ -7283,7 +7283,7 @@
                     const badgeMobile = document.getElementById('pending-badge-mobile');
                     if (badge) badge.style.display = 'none';
                     if (badgeMobile) badgeMobile.style.display = 'none';
-                    if (document.getElementById('tab-gestion')?.classList.contains('active')) renderGestion();
+                    if (document.getElementById('tab-gestion')?.classList.contains('active')) _dir_renderGestion();
                     return;
                 }
                 snapshot.forEach(docSnap => {
@@ -7312,15 +7312,15 @@
                         badgeMobile.style.display = 'none';
                     }
                 }
-                if (document.getElementById('tab-gestion')?.classList.contains('active')) renderGestion();
+                if (document.getElementById('tab-gestion')?.classList.contains('active')) _dir_renderGestion();
             });
             unsubListeners.push(unsubPending);
         }
 
-        function renderGestion() {
+        function _dir_renderGestion() {
             renderGestionCounters();
-            renderPendingList();
-            renderGestionAll();
+            _dir_renderPendingList();
+            _dir_renderGestionAll();
             renderOrphans();
             renderInactivosCard();
         }
@@ -7664,7 +7664,7 @@
             } catch (err) { alert('Error: ' + err.message); }
         };
 
-        function renderPendingList() {
+        function _dir_renderPendingList() {
             const container = document.getElementById('pending-list');
             if (!container) return;
             if (!pendingUsers.length) {
@@ -7690,7 +7690,7 @@
             `).join('');
         }
 
-        function renderGestionAll() {
+        function _dir_renderGestionAll() {
             const container = document.getElementById('gestion-all-list');
             if (!container) return;
 
@@ -8278,7 +8278,7 @@
                 }, { merge: true });
                 alert('✅ Miembro reactivado. Ya puede entrar a la app.');
                 // Refrescar las 3 vistas (gestion principal + huérfanos + inactivos)
-                if (typeof renderGestionAll === 'function') renderGestionAll();
+                if (typeof renderGestionAll === 'function') _dir_renderGestionAll();
                 if (typeof renderOrphans === 'function') renderOrphans();
                 if (typeof renderInactivosCard === 'function') renderInactivosCard();
             } catch (err) { alert('Error: ' + err.message); }
@@ -8299,14 +8299,14 @@
                 await deleteDoc(doc(db, colName, email));
                 alert(`✅ Borrado. Si esta persona se loguea en la app, podrá registrarse de nuevo desde cero.`);
                 // Refrescar las 3 vistas
-                if (typeof renderGestionAll === 'function') renderGestionAll();
+                if (typeof renderGestionAll === 'function') _dir_renderGestionAll();
                 if (typeof renderOrphans === 'function') renderOrphans();
                 if (typeof renderInactivosCard === 'function') renderInactivosCard();
             } catch (err) { alert('Error: ' + err.message); }
         };
 
         // Helper común para los 3 expel-* (audit fields)
-        async function _expelWithAudit(collectionName, email, motivo) {
+        async function _dir_expelWithAudit(collectionName, email, motivo) {
             await setDoc(doc(db, collectionName, email), {
                 status: 'inactive',
                 expulsadoPor: user.email,
@@ -8321,7 +8321,7 @@
             const name = agent ? agent.name : agentEmail;
             if (!confirm(`¿Expulsar al agente "${name}"?\n\nSu historial de datos se conservará pero perderá acceso al sistema.`)) return;
             try {
-                await _expelWithAudit('users', agentEmail, 'expulsar_agent');
+                await _dir_expelWithAudit('users', agentEmail, 'expulsar_agent');
                 alert(`✅ ${name} ha sido expulsado. Sus datos se conservan.`);
             } catch (err) { alert('Error: ' + err.message); }
         };
@@ -8331,7 +8331,7 @@
             const name = coach ? coach.coachName : coachEmail;
             if (!confirm(`¿Expulsar al coach "${name}"?\n\nSus agentes quedarán sin coach. Sus datos se conservan.`)) return;
             try {
-                await _expelWithAudit('coaches', coachEmail, 'expulsar_coach');
+                await _dir_expelWithAudit('coaches', coachEmail, 'expulsar_coach');
                 alert(`✅ ${name} ha sido expulsado. Sus datos se conservan.`);
             } catch (err) { alert('Error: ' + err.message); }
         };
@@ -8341,7 +8341,7 @@
             const name = promoter ? promoter.promoterName : promEmail;
             if (!confirm(`¿Expulsar al promotor "${name}"?\n\nSus coaches quedarán sin promotor. Sus datos se conservan.`)) return;
             try {
-                await _expelWithAudit('promoters', promEmail, 'expulsar_promoter');
+                await _dir_expelWithAudit('promoters', promEmail, 'expulsar_promoter');
                 alert(`✅ ${name} ha sido expulsado. Sus datos se conservan.`);
             } catch (err) { alert('Error: ' + err.message); }
         };
