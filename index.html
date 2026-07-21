@@ -1364,6 +1364,46 @@
         .lb-ghost-tier-label { font-size: 11px; margin-top: 2px; font-weight: 600; }
         .lb-ghost-second-line { font-size: 10px; color: var(--slate); margin-top: 2px; }
         .lb-ghost-coach { font-size: 10px; color: var(--slate); margin-top: 2px; opacity: 0.75; }
+        /* ═══ CALENDARIO DE REPORTES POR AGENTE ═══ */
+        .cal-modal-box {
+            background: var(--panel);
+            border: 1.5px solid var(--gold);
+            border-radius: 14px;
+            padding: 20px;
+            max-width: 92vw;
+            width: 380px;
+            max-height: 90vh;
+            overflow-y: auto;
+            position: relative;
+        }
+        .cal-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 8px; }
+        .cal-title { font-family: 'Playfair Display', serif; font-size: 16px; color: var(--gold); font-weight: 700; flex: 1; line-height: 1.2; }
+        .cal-close-btn { background: none; border: none; color: var(--white); font-size: 24px; cursor: pointer; line-height: 1; padding: 0 4px; }
+        .cal-nav { display: flex; justify-content: center; align-items: center; gap: 12px; margin-bottom: 14px; }
+        .cal-nav-btn { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.1); color: var(--white); border-radius: 8px; width: 32px; height: 32px; cursor: pointer; font-family: inherit; font-size: 14px; }
+        .cal-nav-btn:hover { background: rgba(255,255,255,0.14); }
+        .cal-nav-mes { font-weight: 700; font-size: 14px; min-width: 140px; text-align: center; color: var(--white); }
+        .cal-grid-head { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 4px; }
+        .cal-grid-body { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-bottom: 12px; }
+        .cal-cell-head { text-align: center; font-size: 10px; font-weight: 700; color: var(--slate); padding: 6px 0; text-transform: uppercase; letter-spacing: 1px; }
+        .cal-cell { aspect-ratio: 1; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 13px; font-weight: 600; cursor: pointer; transition: transform .1s, box-shadow .15s; position: relative; padding: 2px; border: 1px solid transparent; }
+        .cal-cell.empty { visibility: hidden; }
+        .cal-cell.none { background: rgba(255,255,255,0.04); color: var(--slate); }
+        .cal-cell.ok { background: rgba(16,185,129,0.18); color: #10b981; border-color: rgba(16,185,129,0.35); }
+        .cal-cell.red { background: rgba(239,68,68,0.18); color: #ef4444; border-color: rgba(239,68,68,0.35); }
+        .cal-cell.sin-actividad { background: rgba(245,158,11,0.18); color: #f59e0b; border-color: rgba(245,158,11,0.35); }
+        .cal-cell.future { opacity: 0.22; cursor: not-allowed; background: rgba(255,255,255,0.015); color: var(--slate); pointer-events: none; }
+        .cal-cell.future:hover { transform: none; box-shadow: none; }
+        .cal-cell:not(.empty):not(.future):hover { transform: scale(1.06); box-shadow: 0 2px 8px rgba(0,0,0,0.25); }
+        .cal-cell.selected { box-shadow: 0 0 0 2px var(--gold); }
+        .cal-cell .cal-num { font-size: 12px; line-height: 1.1; }
+        .cal-cell .cal-icon { font-size: 11px; line-height: 1; }
+        .cal-legend { font-size: 11px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; margin-bottom: 12px; padding: 8px; background: rgba(255,255,255,0.03); border-radius: 8px; }
+        .cal-legend-item { display: flex; align-items: center; gap: 6px; color: var(--white); }
+        .cal-legend-dot { width: 12px; height: 12px; border-radius: 4px; flex-shrink: 0; }
+        .cal-day-detail { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 10px 12px; font-size: 12px; min-height: 44px; color: var(--white); }
+        .cal-day-detail .cal-detail-empty { color: var(--slate); }
+
     </style>
 </head>
 
@@ -1862,63 +1902,6 @@
             </div>
         </div><!-- /tab-tesoreria -->
 
-    </div><!-- end .app -->
-
-    <!-- TESORERÍA: MINT/BURN MODAL -->
-    <div class="modal-overlay" id="tes-action-modal">
-        <div class="modal-box" style="max-width:420px;">
-            <button class="modal-close" onclick="document.getElementById('tes-action-modal').classList.remove('open')">&times;</button>
-            <h2 id="tes-action-title" style="margin-top:0;font-size:18px;">Ajustar totopos</h2>
-            <p style="font-size:12px;color:var(--slate);margin-bottom:14px;" id="tes-action-subtitle">Usuario</p>
-            <div style="display:flex;flex-direction:column;gap:12px;">
-                <div>
-                    <label class="field-label">Cantidad de totopos <svg class="totopo-icon"><use href="#totopo"/></svg></label>
-                    <input type="number" id="tes-action-amount" min="1" placeholder="Ej. 100" style="font-size:18px;font-weight:700;text-align:center;">
-                </div>
-                <div>
-                    <label class="field-label">Motivo (opcional)</label>
-                    <input type="text" id="tes-action-reason" placeholder="Ej. Excelente reporte de marzo">
-                </div>
-                <button class="btn" id="tes-action-confirm" style="font-weight:700;"><i class="fa fa-check"></i> Confirmar</button>
-            </div>
-        </div>
-    </div><!-- /tes-action-modal -->
-
-    <!-- TESORERÍA: HISTORIAL MODAL -->
-    <div class="modal-overlay" id="tes-history-modal">
-        <div class="modal-box" style="max-width:600px;">
-            <button class="modal-close" onclick="document.getElementById('tes-history-modal').classList.remove('open')">&times;</button>
-            <h2 id="tes-history-title" style="margin-top:0;font-size:18px;"><i class="fa fa-clock-rotate-left"></i> Historial</h2>
-            <p style="font-size:12px;color:var(--slate);margin-bottom:14px;" id="tes-history-subtitle">Movimientos de totopos</p>
-            <div id="tes-history-list" style="max-height:400px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;"></div>
-        </div>
-    </div><!-- /tes-history-modal -->
-
-    <!-- PROMOTER REPORT DETAIL MODAL -->
-    <div class="modal-overlay" id="prpt-detail-modal">
-        <div class="modal-box" style="max-width:480px;">
-            <button class="modal-close" onclick="document.getElementById('prpt-detail-modal').classList.remove('open')">&times;</button>
-            <h2 style="font-family:'Playfair Display',serif;color:var(--green);margin-top:0;font-size:20px;" id="prpt-detail-title"></h2>
-            <div id="prpt-detail-header" style="font-size:12px;color:var(--slate);margin-bottom:16px;"></div>
-            <div id="prpt-detail-content" style="display:flex;flex-direction:column;gap:12px;font-size:14px;line-height:1.6;"></div>
-            <button class="btn btn-sm" style="margin-top:20px;width:100%;" onclick="document.getElementById('prpt-detail-modal').classList.remove('open')">Cerrar</button>
-        </div>
-    </div>
-
-    <!-- LOGOUT CONFIRMATION MODAL -->
-    <div class="modal-overlay" id="logout-confirm-modal" onclick="if(event.target===this)cancelLogout()">
-        <div class="modal-box" style="max-width:340px;text-align:center;">
-            <div style="font-size:42px;margin-bottom:8px;">👋</div>
-            <h2 style="font-family:'Inter',sans-serif;font-weight:800;color:var(--white);margin:0 0 8px;font-size:18px;">¿Cerrar sesión?</h2>
-            <p style="color:var(--slate);font-size:13px;margin:0 0 20px;">Tendrás que volver a entrar con Google la próxima vez.</p>
-            <div style="display:flex;gap:10px;">
-                <button class="btn btn-sm" style="flex:1;" onclick="cancelLogout()">Cancelar</button>
-                <button class="btn btn-sm btn-red" style="flex:1;" onclick="confirmLogout()">Cerrar sesión</button>
-            </div>
-        </div>
-    </div>
-
-
         <!-- ═══════════════ TAB: BITACORA (copiado desde director) ═══════════════ -->
         <div id="tab-bitacora" class="tab-panel">
             <div class="desktop-only-msg">
@@ -2281,7 +2264,95 @@
                     </div>
                 </div>
             </div>
-        </div><!-- /tab-conceptos -->
+        </div>
+
+    </div><!-- end .app -->
+
+    <!-- TESORERÍA: MINT/BURN MODAL -->
+    <div class="modal-overlay" id="tes-action-modal">
+        <div class="modal-box" style="max-width:420px;">
+            <button class="modal-close" onclick="document.getElementById('tes-action-modal').classList.remove('open')">&times;</button>
+            <h2 id="tes-action-title" style="margin-top:0;font-size:18px;">Ajustar totopos</h2>
+            <p style="font-size:12px;color:var(--slate);margin-bottom:14px;" id="tes-action-subtitle">Usuario</p>
+            <div style="display:flex;flex-direction:column;gap:12px;">
+                <div>
+                    <label class="field-label">Cantidad de totopos <svg class="totopo-icon"><use href="#totopo"/></svg></label>
+                    <input type="number" id="tes-action-amount" min="1" placeholder="Ej. 100" style="font-size:18px;font-weight:700;text-align:center;">
+                </div>
+                <div>
+                    <label class="field-label">Motivo (opcional)</label>
+                    <input type="text" id="tes-action-reason" placeholder="Ej. Excelente reporte de marzo">
+                </div>
+                <button class="btn" id="tes-action-confirm" style="font-weight:700;"><i class="fa fa-check"></i> Confirmar</button>
+            </div>
+        </div>
+    </div><!-- /tes-action-modal -->
+
+    <!-- TESORERÍA: HISTORIAL MODAL -->
+    <div class="modal-overlay" id="tes-history-modal">
+        <div class="modal-box" style="max-width:600px;">
+            <button class="modal-close" onclick="document.getElementById('tes-history-modal').classList.remove('open')">&times;</button>
+            <h2 id="tes-history-title" style="margin-top:0;font-size:18px;"><i class="fa fa-clock-rotate-left"></i> Historial</h2>
+            <p style="font-size:12px;color:var(--slate);margin-bottom:14px;" id="tes-history-subtitle">Movimientos de totopos</p>
+            <div id="tes-history-list" style="max-height:400px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;"></div>
+        </div>
+    </div><!-- /tes-history-modal -->
+
+    <!-- PROMOTER REPORT DETAIL MODAL -->
+    <div class="modal-overlay" id="prpt-detail-modal">
+        <div class="modal-box" style="max-width:480px;">
+            <button class="modal-close" onclick="document.getElementById('prpt-detail-modal').classList.remove('open')">&times;</button>
+            <h2 style="font-family:'Playfair Display',serif;color:var(--green);margin-top:0;font-size:20px;" id="prpt-detail-title"></h2>
+            <div id="prpt-detail-header" style="font-size:12px;color:var(--slate);margin-bottom:16px;"></div>
+            <div id="prpt-detail-content" style="display:flex;flex-direction:column;gap:12px;font-size:14px;line-height:1.6;"></div>
+            <button class="btn btn-sm" style="margin-top:20px;width:100%;" onclick="document.getElementById('prpt-detail-modal').classList.remove('open')">Cerrar</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="agent-calendar-modal" onclick="if(event.target===this)closeAgentCalendar()">
+        <div class="cal-modal-box">
+            <div class="cal-header">
+                <div class="cal-title" id="cal-agent-name">Agente</div>
+                <button class="cal-close-btn" onclick="closeAgentCalendar()">&times;</button>
+            </div>
+            <div class="cal-nav">
+                <button class="cal-nav-btn" onclick="navAgentCalendar(-1)" aria-label="Mes anterior">‹</button>
+                <div class="cal-nav-mes" id="cal-current-mes">—</div>
+                <button class="cal-nav-btn" onclick="navAgentCalendar(1)" aria-label="Mes siguiente">›</button>
+            </div>
+            <div class="cal-grid-head">
+                <div class="cal-cell-head">Lu</div>
+                <div class="cal-cell-head">Ma</div>
+                <div class="cal-cell-head">Mi</div>
+                <div class="cal-cell-head">Ju</div>
+                <div class="cal-cell-head">Vi</div>
+                <div class="cal-cell-head">Sa</div>
+                <div class="cal-cell-head">Do</div>
+            </div>
+            <div class="cal-grid-body" id="cal-grid-body"></div>
+            <div class="cal-legend">
+                <div class="cal-legend-item"><span class="cal-legend-dot" style="background:rgba(16,185,129,0.5)"></span> 🟢 Reportado OK</div>
+                <div class="cal-legend-item"><span class="cal-legend-dot" style="background:rgba(239,68,68,0.5)"></span> 🔴 Reportó mal</div>
+                <div class="cal-legend-item"><span class="cal-legend-dot" style="background:rgba(245,158,11,0.5)"></span> 🌙 Sin venta</div>
+                <div class="cal-legend-item"><span class="cal-legend-dot" style="background:rgba(255,255,255,0.1)"></span> No reportó</div>
+            </div>
+            <div class="cal-day-detail" id="cal-day-detail"><span class="cal-detail-empty">Toca un día para ver detalles.</span></div>
+        </div>
+    </div>
+
+    <!-- LOGOUT CONFIRMATION MODAL -->
+    <div class="modal-overlay" id="logout-confirm-modal" onclick="if(event.target===this)cancelLogout()">
+        <div class="modal-box" style="max-width:340px;text-align:center;">
+            <div style="font-size:42px;margin-bottom:8px;">👋</div>
+            <h2 style="font-family:'Inter',sans-serif;font-weight:800;color:var(--white);margin:0 0 8px;font-size:18px;">¿Cerrar sesión?</h2>
+            <p style="color:var(--slate);font-size:13px;margin:0 0 20px;">Tendrás que volver a entrar con Google la próxima vez.</p>
+            <div style="display:flex;gap:10px;">
+                <button class="btn btn-sm" style="flex:1;" onclick="cancelLogout()">Cancelar</button>
+                <button class="btn btn-sm btn-red" style="flex:1;" onclick="confirmLogout()">Cerrar sesión</button>
+            </div>
+        </div>
+    </div>
+<!-- /tab-conceptos -->
 
     <!-- UPDATE AVAILABLE MODAL -->
     <!-- BOTTOM NAV (mobile only, estilo iOS/Android) — 5 tabs supradirector -->
@@ -8344,6 +8415,162 @@
                 await _dir_expelWithAudit('promoters', promEmail, 'expulsar_promoter');
                 alert(`✅ ${name} ha sido expulsado. Sus datos se conservan.`);
             } catch (err) { alert('Error: ' + err.message); }
+        };
+
+
+
+        // ─── CALENDARIO DE REPORTES POR AGENTE ──────────────────────────────────────
+        let _calCurrentAgent = null;
+        let _calCurrentYear = null;
+        let _calCurrentMonth = null;
+        let _calSelectedDate = null;
+
+        window.openAgentCalendar = function (agentName) {
+            _calCurrentAgent = (agentName || '').replace(/&#39;/g, "'").replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"');
+            const now = new Date();
+            _calCurrentYear = now.getFullYear();
+            _calCurrentMonth = now.getMonth() + 1;
+            _calSelectedDate = null;
+            const nameEl = document.getElementById('cal-agent-name');
+            if (nameEl) nameEl.textContent = _calCurrentAgent;
+            _renderAgentCalendar();
+            document.getElementById('agent-calendar-modal').classList.add('open');
+        };
+
+        window.closeAgentCalendar = function () {
+            document.getElementById('agent-calendar-modal').classList.remove('open');
+            _calCurrentAgent = null;
+            _calSelectedDate = null;
+        };
+
+        window.navAgentCalendar = function (dir) {
+            _calCurrentMonth += dir;
+            if (_calCurrentMonth < 1) { _calCurrentMonth = 12; _calCurrentYear--; }
+            if (_calCurrentMonth > 12) { _calCurrentMonth = 1; _calCurrentYear++; }
+            _calSelectedDate = null;
+            _renderAgentCalendar();
+        };
+
+        function _calGetDayStatus(dia) {
+            if (!dia) return 'none';
+            if (dia.sinActividad === true) return 'sin-actividad';
+            const sum = (Number(dia.P)||0) + (Number(dia.E)||0) + (Number(dia.C)||0) + (Number(dia.V)||0) + (Number(dia.S)||0);
+            const hasData = sum > 0 || (Number(dia.prima)||0) > 0;
+            if (!hasData) return 'none';
+            try {
+                const { ok } = validateDay(dia);
+                return ok ? 'ok' : 'red';
+            } catch (e) {
+                return 'none';
+            }
+        }
+
+        function _calIsFuture(year, month1to12, date) {
+            const cellDate = new Date(year, month1to12 - 1, date);
+            cellDate.setHours(0, 0, 0, 0);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            return cellDate.getTime() > today.getTime();
+        }
+
+        function _renderAgentCalendar() {
+            if (!_calCurrentAgent || !_calCurrentYear || !_calCurrentMonth) return;
+            const mesStr = MONTHS_ES[_calCurrentMonth - 1] + ' ' + _calCurrentYear;
+            const mesEl = document.getElementById('cal-current-mes');
+            if (mesEl) mesEl.textContent = mesStr;
+
+            const weeks = getMonthCalendar(_calCurrentYear, _calCurrentMonth);
+            const firstDayName = weeks[0]?.[0]?.dayName || 'Lunes';
+            const leadingEmpty = DAYS.indexOf(firstDayName);
+
+            // Defensivo: aceptar agent name O agentId (apps con refactor agentId).
+            const entriesThisMonth = (state.entries || []).filter(e =>
+                ((e.agent === _calCurrentAgent) || (e.agentId === _calCurrentAgent)) && e.mes === mesStr
+            );
+
+            const dayStatusMap = {};
+            weeks.forEach((week, wIdx) => {
+                const semana = wIdx + 1;
+                const entry = entriesThisMonth.find(e => e.semana == semana);
+                week.forEach(({ dayName, date }) => {
+                    const dia = entry?.dias?.find(d => d.dia === dayName) || null;
+                    dayStatusMap[date] = { dia, status: _calGetDayStatus(dia), dayName };
+                });
+            });
+            window._calDayStatusMap = dayStatusMap;
+
+            const grid = document.getElementById('cal-grid-body');
+            if (!grid) return;
+            const cells = [];
+            for (let i = 0; i < leadingEmpty; i++) {
+                cells.push('<div class="cal-cell empty"></div>');
+            }
+            const daysInMonth = new Date(_calCurrentYear, _calCurrentMonth, 0).getDate();
+            for (let d = 1; d <= daysInMonth; d++) {
+                if (_calIsFuture(_calCurrentYear, _calCurrentMonth, d)) {
+                    cells.push(`<div class="cal-cell future"><span class="cal-num">${d}</span></div>`);
+                    continue;
+                }
+                const info = dayStatusMap[d] || { status: 'none' };
+                const icon = info.status === 'ok' ? '🟢'
+                    : info.status === 'red' ? '🔴'
+                    : info.status === 'sin-actividad' ? '🌙'
+                    : '';
+                const selected = (_calSelectedDate === d) ? ' selected' : '';
+                cells.push(`<div class="cal-cell ${info.status}${selected}" onclick="_calShowDayDetail(${d})">
+                    <span class="cal-num">${d}</span>
+                    ${icon ? `<span class="cal-icon">${icon}</span>` : ''}
+                </div>`);
+            }
+            grid.innerHTML = cells.join('');
+
+            const detail = document.getElementById('cal-day-detail');
+            if (detail) detail.innerHTML = '<span class="cal-detail-empty">Toca un día para ver detalles.</span>';
+        }
+
+        window._calShowDayDetail = function (date) {
+            const info = window._calDayStatusMap?.[date];
+            const detail = document.getElementById('cal-day-detail');
+            if (!detail || !info) return;
+            _calSelectedDate = date;
+            document.querySelectorAll('.cal-cell.selected').forEach(c => c.classList.remove('selected'));
+            const targetCells = document.querySelectorAll('.cal-grid-body .cal-cell');
+            for (const cell of targetCells) {
+                const numEl = cell.querySelector('.cal-num');
+                if (numEl && parseInt(numEl.textContent) === date && !cell.classList.contains('empty') && !cell.classList.contains('future')) {
+                    cell.classList.add('selected');
+                    break;
+                }
+            }
+
+            const mesNombre = MONTHS_ES[_calCurrentMonth - 1];
+            const fechaStr = `${date} de ${mesNombre} (${info.dayName})`;
+
+            if (info.status === 'none') {
+                detail.innerHTML = `<strong>${fechaStr}</strong><br><span class="cal-detail-empty">⚪ No reportó este día.</span>`;
+                return;
+            }
+            if (info.status === 'sin-actividad') {
+                detail.innerHTML = `<strong>${fechaStr}</strong><br>🌙 Declaró "Sin intento de venta".`;
+                return;
+            }
+            const d = info.dia || {};
+            const statusLabel = info.status === 'ok'
+                ? '🟢 Reportado correctamente'
+                : '🔴 Errores en el reporte';
+            const primaFmt = (Number(d.prima)||0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+            detail.innerHTML = `
+                <strong>${fechaStr}</strong><br>
+                ${statusLabel}
+                <div style="display:flex;gap:10px;margin-top:6px;font-size:11px;flex-wrap:wrap;">
+                    <span>P:<strong>${Number(d.P)||0}</strong></span>
+                    <span>E:<strong>${Number(d.E)||0}</strong></span>
+                    <span>C:<strong>${Number(d.C)||0}</strong></span>
+                    <span>V:<strong>${Number(d.V)||0}</strong></span>
+                    <span>S:<strong>${Number(d.S)||0}</strong></span>
+                    <span style="color:var(--gold)">$<strong>${primaFmt}</strong></span>
+                </div>
+            `;
         };
 
 
