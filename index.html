@@ -1390,6 +1390,8 @@
         .cal-cell.empty { visibility: hidden; }
         .cal-cell.none { background: rgba(255,255,255,0.04); color: var(--slate); }
         .cal-cell.ok { background: rgba(16,185,129,0.18); color: #10b981; border-color: rgba(16,185,129,0.35); }
+        /* Verde igual que .ok — la plantita hace la diferencia semántica */
+        .cal-cell.ok-no-close { background: rgba(16,185,129,0.18); color: #10b981; border-color: rgba(16,185,129,0.35); }
         .cal-cell.red { background: rgba(239,68,68,0.18); color: #ef4444; border-color: rgba(239,68,68,0.35); }
         .cal-cell.sin-actividad { background: rgba(245,158,11,0.18); color: #f59e0b; border-color: rgba(245,158,11,0.35); }
         .cal-cell.future { opacity: 0.22; cursor: not-allowed; background: rgba(255,255,255,0.015); color: var(--slate); pointer-events: none; }
@@ -2331,10 +2333,11 @@
             </div>
             <div class="cal-grid-body" id="cal-grid-body"></div>
             <div class="cal-legend">
-                <div class="cal-legend-item"><span class="cal-legend-dot" style="background:rgba(16,185,129,0.5)"></span> 🟢 Reportado OK</div>
-                <div class="cal-legend-item"><span class="cal-legend-dot" style="background:rgba(239,68,68,0.5)"></span> 🔴 Reportó mal</div>
-                <div class="cal-legend-item"><span class="cal-legend-dot" style="background:rgba(245,158,11,0.5)"></span> 🌙 Sin venta</div>
-                <div class="cal-legend-item"><span class="cal-legend-dot" style="background:rgba(255,255,255,0.1)"></span> No reportó</div>
+                <div class="cal-legend-item"><span class="cal-legend-dot" style="background:rgba(16,185,129,0.5)"></span> 💪 Actividad con cierre</div>
+                <div class="cal-legend-item"><span class="cal-legend-dot" style="background:rgba(16,185,129,0.5)"></span> 🌱 Actividad sin cierre</div>
+                <div class="cal-legend-item"><span class="cal-legend-dot" style="background:rgba(245,158,11,0.5)"></span> 🌙 Sin intento</div>
+                <div class="cal-legend-item"><span class="cal-legend-dot" style="background:rgba(239,68,68,0.5)"></span> 🔴 Con errores</div>
+                <div class="cal-legend-item"><span class="cal-legend-dot" style="background:rgba(255,255,255,0.1)"></span> ⚪ No reportó</div>
             </div>
             <div class="cal-day-detail" id="cal-day-detail"><span class="cal-detail-empty">Toca un día para ver detalles.</span></div>
         </div>
@@ -8459,7 +8462,10 @@
             if (!hasData) return 'none';
             try {
                 const { ok } = validateDay(dia);
-                return ok ? 'ok' : 'red';
+                if (!ok) return 'red';
+                // Verde válido: distinguir "con cierre" (V>0) de "sin cierre" (V===0).
+                const V = Number(dia.V) || 0;
+                return V > 0 ? 'ok' : 'ok-no-close';
             } catch (e) {
                 return 'none';
             }
@@ -8512,9 +8518,11 @@
                     continue;
                 }
                 const info = dayStatusMap[d] || { status: 'none' };
-                const icon = info.status === 'ok' ? '🟢'
+                const icon = info.status === 'ok' ? '💪'
+                    : info.status === 'ok-no-close' ? '🌱'
                     : info.status === 'red' ? '🔴'
                     : info.status === 'sin-actividad' ? '🌙'
+                    : info.status === 'none' ? '⚪'
                     : '';
                 const selected = (_calSelectedDate === d) ? ' selected' : '';
                 cells.push(`<div class="cal-cell ${info.status}${selected}" onclick="_calShowDayDetail(${d})">
@@ -8556,7 +8564,9 @@
             }
             const d = info.dia || {};
             const statusLabel = info.status === 'ok'
-                ? '🟢 Reportado correctamente'
+                ? '💪 Actividad con cierre'
+                : info.status === 'ok-no-close'
+                ? '🌱 Sin venta pero sembró, el cierre está en camino'
                 : '🔴 Errores en el reporte';
             const primaFmt = (Number(d.prima)||0).toLocaleString('es-MX', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             detail.innerHTML = `
