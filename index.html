@@ -1435,10 +1435,15 @@
         <!-- TAB NAV (desktop) — solo 5 tabs (read-only nacional) -->
         <div class="tab-nav">
             <button class="tab-btn active" data-tab="leaderboard" onclick="switchTab('leaderboard',this)"><i class="fa fa-table"></i> Equipo</button>
+            <button class="tab-btn" data-tab="bitacora" onclick="switchTab('bitacora',this)"><i class="fa fa-book-open"></i> Bitácora</button>
             <button class="tab-btn" data-tab="kpis" onclick="switchTab('kpis',this)"><i class="fa fa-chart-column"></i> KPIs</button>
             <button class="tab-btn" data-tab="charts" onclick="switchTab('charts',this)"><i class="fa fa-chart-area"></i> Tendencias</button>
+            <button class="tab-btn" data-tab="alertas" onclick="switchTab('alertas',this)"><i class="fa fa-triangle-exclamation"></i> Alertas <span id="alertas-badge" style="display:none; background:var(--red); color:#fff; border-radius:10px; font-size:10px; padding:1px 6px; margin-left:4px;">0</span></button>
+            <button class="tab-btn" data-tab="buzon" onclick="switchTab('buzon',this)"><i class="fa fa-inbox"></i> Buzón <span id="buzon-badge" style="display:none; background:var(--red); color:#fff; border-radius:10px; font-size:10px; padding:1px 6px; margin-left:4px;">0</span></button>
+            <button class="tab-btn" data-tab="gestion" onclick="switchTab('gestion',this)"><i class="fa fa-users-gear"></i> Gestión de Equipo</button>
             <button class="tab-btn" data-tab="tienda" onclick="switchTab('tienda',this)"><i class="fa fa-store"></i> Tienda</button>
             <button class="tab-btn" data-tab="tesoreria" onclick="switchTab('tesoreria',this)"><i class="fa fa-landmark"></i> Tesorería <svg class="totopo-icon"><use href="#totopo"/></svg></button>
+            <button class="tab-btn" data-tab="conceptos" onclick="switchTab('conceptos',this)"><i class="fa fa-lightbulb"></i> Conceptos</button>
         </div>
 
         <!-- ═══════════════════════════════ TAB: LEADERBOARD ═══════════════════════════════ -->
@@ -1893,6 +1898,371 @@
             </div>
         </div>
     </div>
+
+
+        <!-- ═══════════════ TAB: BITACORA (copiado desde director) ═══════════════ -->
+        <div id="tab-bitacora" class="tab-panel">
+            <div class="desktop-only-msg">
+                <i class="fa fa-desktop"></i>
+                <strong>Solo en computadora</strong>
+                La bitácora de agentes tiene muchas columnas y se ve mejor en pantalla grande.<br>Abrí esta sección desde tu PC.
+            </div>
+            <div class="card">
+                <p class="card-title"><i class="fa fa-book-open"></i> Bitácora de Agentes <span style="font-size:12px;font-weight:400;color:var(--slate);">(solo lectura, para efectos de supervisión)</span></p>
+                <div class="info-box">
+                    <strong>Embudo PECVS$:</strong> P ≥ E ≥ C ≥ V &nbsp;|&nbsp;
+                    P=Contactos · E=Entrevistas · C=Cotizaciones · V=Cierres · S=Solicitudes · $=Prima Neta
+                </div>
+                <div class="bitacora-header">
+                    <div>
+                        <label class="field-label">Coach</label>
+                        <select id="bit-coach-filter" onchange="refreshBitAgentSelect()">
+                            <option value="">— Todos los coaches —</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="field-label">Agente</label>
+                        <select id="bit-agent" onchange="autoLoadBit()">
+                            <option value="">— Selecciona agente —</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="field-label">Mes</label>
+                        <select id="bit-month" onchange="updateBitCalendar()">
+                            <option value="1">Enero</option><option value="2">Febrero</option>
+                            <option value="3">Marzo</option><option value="4" selected>Abril</option>
+                            <option value="5">Mayo</option><option value="6">Junio</option>
+                            <option value="7">Julio</option><option value="8">Agosto</option>
+                            <option value="9">Septiembre</option><option value="10">Octubre</option>
+                            <option value="11">Noviembre</option><option value="12">Diciembre</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="field-label">Año</label>
+                        <input type="number" id="bit-year" value="2026" min="2020" max="2040" onchange="updateBitCalendar()" style="width:100px;">
+                    </div>
+                    <div>
+                        <label class="field-label">Semana</label>
+                        <select id="bit-semana" onchange="autoLoadBit()"></select>
+                    </div>
+                </div>
+                <div id="bit-week-info" style="font-size:11px;color:var(--teal);margin-bottom:10px;"></div>
+                <table class="week-table">
+                    <thead>
+                        <tr>
+                            <th>Día</th>
+                            <th>P — Contactos</th><th>E — Entrevistas</th><th>C — Cotizaciones</th>
+                            <th>V — Cierres</th><th>S — Solicitudes</th><th>$ — Prima Neta</th><th>Semáforo</th>
+                        </tr>
+                    </thead>
+                    <tbody id="bit-week-body"></tbody>
+                    <tfoot>
+                        <tr>
+                            <td class="day-label">TOTAL SEM</td>
+                            <td class="total-cell" id="bit-tt-P">0</td>
+                            <td class="total-cell" id="bit-tt-E">0</td>
+                            <td class="total-cell" id="bit-tt-C">0</td>
+                            <td class="total-cell" id="bit-tt-V">0</td>
+                            <td class="total-cell" id="bit-tt-S">0</td>
+                            <td class="total-cell" id="bit-tt-$">$0</td>
+                            <td></td>
+                        </tr>
+                        <tr>
+                            <td class="day-label">TOTAL MES</td>
+                            <td class="total-cell" id="bit-ttm-P">0</td>
+                            <td class="total-cell" id="bit-ttm-E">0</td>
+                            <td class="total-cell" id="bit-ttm-C">0</td>
+                            <td class="total-cell" id="bit-ttm-V">0</td>
+                            <td class="total-cell" id="bit-ttm-S">0</td>
+                            <td class="total-cell" id="bit-ttm-$">$0</td>
+                            <td></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+
+        <!-- ═══════════════ TAB: ALERTAS (copiado desde director) ═══════════════ -->
+        <div id="tab-alertas" class="tab-panel">
+            <div class="card" style="margin-bottom:20px;">
+                <p class="card-title"><i class="fa fa-triangle-exclamation"></i> Alertas de Comportamiento — Reporte Mensual</p>
+                <p style="font-size:12px; color:var(--slate); margin-bottom:16px;">
+                    Detecta patrones que merecen atención: agentes que se rinden mucho (marcan "sin intento de venta") o que trabajan sin cerrar (semáforo verde pero sin prima).
+                </p>
+                <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end; margin-bottom:8px;">
+                    <div>
+                        <label class="field-label">Mes</label>
+                        <select id="alertas-mes" style="min-width:130px;"></select>
+                    </div>
+                    <div>
+                        <label class="field-label">Año</label>
+                        <input type="number" id="alertas-year" value="2026" min="2020" max="2040" style="width:100px;">
+                    </div>
+                    <div>
+                        <button onclick="renderAlertas()" style="background:var(--gold); color:#000; border:none; border-radius:6px; padding:8px 16px; font-weight:700; cursor:pointer; font-size:12px;">🔄 Actualizar</button>
+                    </div>
+                </div>
+                <div id="alertas-status" style="margin-top:12px; padding:8px 12px; background:rgba(148,163,184,0.08); border-radius:6px; font-size:11px; color:var(--slate); font-family:monospace;"></div>
+            </div>
+
+            <div class="card" style="margin-bottom:20px;">
+                <p class="card-title" style="color:var(--slate);"><span style="filter:none;">🌙</span> Se rinden mucho — <span id="alertas-rendidos-umbral">8</span> o más días de "sin intento de venta"</p>
+                <p style="font-size:11px; color:var(--slate); margin-bottom:12px;">
+                    Agentes que en el mes elegido registraron demasiados días marcados como 🌙 (sin intento de venta). Refleja rendimiento voluntariamente bajo.
+                </p>
+                <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px; font-size:12px; color:var(--slate);">
+                    <label>Umbral:</label>
+                    <input type="number" id="alertas-umbral-moon" value="8" min="1" max="31" style="width:70px;" title="Mínimo de días 🌙 para levantar la alerta">
+                    <span>días 🌙 en el mes</span>
+                </div>
+                <div id="alertas-rendidos-list">
+                    <div class="empty-state"><i class="fa fa-inbox"></i>Cargando...</div>
+                </div>
+            </div>
+
+            <div class="card" style="margin-bottom:20px;">
+                <p class="card-title" style="color:var(--slate);"><span style="filter:none;">🟢</span> Trabajan pero no cierran — <span id="alertas-verdes-umbral">8</span> o más días verdes sin prima</p>
+                <p style="font-size:11px; color:var(--slate); margin-bottom:12px;">
+                    Agentes con al menos el umbral en días de semáforo verde 🟢 (P ≥ E ≥ C ≥ V, con presentaciones > 0) pero prima total del mes = $0. Indica actividad sin conversión.
+                </p>
+                <div style="display:flex; gap:8px; align-items:center; margin-bottom:12px; font-size:12px; color:var(--slate);">
+                    <label>Umbral:</label>
+                    <input type="number" id="alertas-umbral-verde" value="8" min="1" max="31" style="width:70px;" title="Mínimo de días 🟢 con prima = 0 para levantar la alerta">
+                    <span>días 🟢 con prima $0</span>
+                </div>
+                <div id="alertas-verdes-list">
+                    <div class="empty-state"><i class="fa fa-inbox"></i>Cargando...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════════ TAB: BUZON (copiado desde director) ═══════════════ -->
+        <div id="tab-buzon" class="tab-panel">
+            <div class="desktop-only-msg">
+                <i class="fa fa-desktop"></i>
+                <strong>Solo en computadora</strong>
+                El buzón de sugerencias está optimizado para pantalla grande.<br>Abrí esta sección desde tu PC.
+            </div>
+            <div class="card" style="margin-bottom:20px;">
+                <p class="card-title"><i class="fa fa-inbox"></i> Buzón de Sugerencias y Errores</p>
+                <p style="font-size:12px; color:var(--slate); margin-bottom:16px;">
+                    Mensajes que tu equipo te mandó. Es un buzón unidireccional — ellos no esperan respuesta acá.
+                </p>
+                <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:flex-end;">
+                    <div>
+                        <label class="field-label">Estado</label>
+                        <select id="buzon-filter-status" onchange="renderBuzon()">
+                            <option value="pending">Pendientes</option>
+                            <option value="seen">Vistos</option>
+                            <option value="archived">Archivados</option>
+                            <option value="all">Todos</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="field-label">Tipo</label>
+                        <select id="buzon-filter-tipo" onchange="renderBuzon()">
+                            <option value="">Todos los tipos</option>
+                            <option value="sugerencia">💡 Sugerencias</option>
+                            <option value="bug">🐞 Errores en la app</option>
+                            <option value="otro">💬 Otros</option>
+                        </select>
+                    </div>
+                    <div style="margin-left:auto; font-size:11px; color:var(--slate); align-self:center;">
+                        <span id="buzon-counts-label">—</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div id="buzon-list" style="display:flex; flex-direction:column; gap:12px;">
+                    <div class="empty-state"><i class="fa fa-inbox"></i>Cargando...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════════ TAB: GESTION (copiado desde director) ═══════════════ -->
+        <div id="tab-gestion" class="tab-panel">
+            <!-- Chip único compacto: "Agentes: X registrados | Y activos (7d)" -->
+            <div id="gestion-counters" style="margin-bottom:14px;">
+                <span title="Registrados = agentes activos en tu región (no expulsados, no pendientes). Activos (7d) = los que llenaron al menos un día con actividad o 'sin intento' en los últimos 7 días." style="display:inline-flex; align-items:center; gap:8px; background:rgba(212,175,55,0.08); border:1px solid rgba(212,175,55,0.25); border-radius:14px; padding:5px 12px; font-size:11px; color:rgba(255,255,255,0.85); white-space:nowrap;">
+                    👤 <strong style="color:var(--gold-l); font-weight:700;">Agentes:</strong>
+                    <span><strong id="counter-agents" style="color:#cfe1ff; font-weight:800;">—</strong> registrados</span>
+                    <span style="color:rgba(255,255,255,0.25);">|</span>
+                    <span><strong id="counter-active-7d" style="color:#bbf3d4; font-weight:800;">—</strong> activos (7d)</span>
+                </span>
+            </div>
+            <div class="card" style="margin-bottom:20px;">
+                <p class="card-title"><i class="fa fa-clock"></i> Solicitudes Pendientes de Aprobación</p>
+                <p style="font-size:12px; color:var(--slate); margin-bottom:16px;">Usuarios que solicitaron acceso y esperan tu aprobación para unirse al equipo.</p>
+                <div id="pending-list">
+                    <div class="empty-state"><i class="fa fa-inbox"></i>No hay solicitudes pendientes.</div>
+                </div>
+            </div>
+            <div class="card">
+                <p class="card-title"><i class="fa fa-users"></i> Gestionar Equipo Activo</p>
+                <p style="font-size:12px; color:var(--slate); margin-bottom:6px;">
+                    Edita el rol o código de asignación de cualquier miembro y pulsa <strong style="color:var(--gold);">Guardar</strong>.
+                    Al cambiar el rol, el miembro migra de colección automáticamente — sus dependientes quedan huérfanos hasta que los reasignes manualmente.
+                </p>
+                <div style="margin-bottom:14px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+                    <input type="text" id="gestion-search" placeholder="🔍 Buscar por nombre, email o clave..." oninput="renderGestionAll()" style="max-width:320px; padding:8px 12px; font-size:12px;">
+                    <select id="gestion-role-filter" onchange="renderGestionAll()" style="width:auto; min-width:130px; padding:8px; font-size:12px;">
+                        <option value="">Todos los roles</option>
+                        <option value="promoter">📊 Promotores</option>
+                        <option value="coach">🧑‍🏫 Coaches</option>
+                        <option value="agent">👤 Agentes</option>
+                    </select>
+                    <select id="gestion-promotor-filter" onchange="renderGestionAll()" style="width:auto; min-width:170px; padding:8px; font-size:12px;">
+                        <option value="">Todos los equipos promotor</option>
+                    </select>
+                    <select id="gestion-coach-filter" onchange="renderGestionAll()" style="width:auto; min-width:170px; padding:8px; font-size:12px;">
+                        <option value="">Todos los equipos coach</option>
+                    </select>
+                </div>
+                <!-- Column headers -->
+                <div style="display:grid; grid-template-columns:2fr 80px 1fr 1fr auto; gap:8px; padding:6px 14px; font-size:9px; color:var(--slate); font-weight:700; text-transform:uppercase; letter-spacing:1px; border-bottom:1px solid var(--border); margin-bottom:8px;">
+                    <div>Miembro</div>
+                    <div>Clave</div>
+                    <div>Rol</div>
+                    <div>Asignado a (código)</div>
+                    <div></div>
+                </div>
+                <div id="gestion-all-list"></div>
+            </div>
+
+            <div class="card" style="margin-top:20px;">
+                <p class="card-title"><i class="fa fa-ghost" style="color:var(--orange);"></i> Huérfanos (jerarquía rota) <span id="orphans-count" style="font-size:12px; color:var(--slate); font-weight:400; margin-left:8px;"></span></p>
+                <p style="font-size:12px; color:var(--slate); margin-bottom:14px;">
+                    Miembros activos cuyo código de asignación no apunta a un padre válido. Pueden seguir entrando a la app pero no aparecen en los reportes correctos. Reasignalos a un padre válido.
+                </p>
+                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px;">
+                    <input type="text" id="orphans-search" placeholder="🔍 Buscar por nombre o email..." oninput="renderOrphans()" style="max-width:280px; padding:7px 10px; font-size:12px;">
+                    <label style="font-size:12px; color:var(--slate); display:inline-flex; align-items:center; gap:6px; cursor:pointer; padding:6px 12px; background:rgba(212,175,55,0.06); border:1px solid rgba(212,175,55,0.2); border-radius:6px;">
+                        <input type="checkbox" id="orphans-hide-test" onchange="renderOrphans()" checked style="width:auto; margin:0;">
+                        <span>🧪 Ocultar datos de prueba (@example.com, @test.com)</span>
+                    </label>
+                    <button class="btn btn-sm" onclick="renderOrphans()">
+                        <i class="fa fa-rotate"></i> Refrescar
+                    </button>
+                </div>
+                <div id="orphans-list">
+                    <div class="empty-state"><i class="fa fa-spinner fa-spin"></i> Calculando huérfanos...</div>
+                </div>
+            </div>
+
+            <div class="card" style="margin-top:20px;">
+                <p class="card-title"><i class="fa fa-user-slash" style="color:var(--red);"></i> Miembros Inactivos (Expulsados) <span id="inactivos-count" style="font-size:12px; color:var(--slate); font-weight:400; margin-left:8px;"></span></p>
+                <p style="font-size:12px; color:var(--slate); margin-bottom:14px;">
+                    Miembros con <code>status: inactive</code>. No pueden entrar a la app. Si fue por error, pulsá <strong>Reactivar</strong>.
+                </p>
+                <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-bottom:12px;">
+                    <input type="text" id="inactivos-search" placeholder="🔍 Buscar por nombre o email..." oninput="renderInactivosCard()" style="max-width:280px; padding:7px 10px; font-size:12px;">
+                    <label style="font-size:12px; color:var(--slate); display:inline-flex; align-items:center; gap:6px; cursor:pointer; padding:6px 12px; background:rgba(212,175,55,0.06); border:1px solid rgba(212,175,55,0.2); border-radius:6px;">
+                        <input type="checkbox" id="inactivos-hide-test" onchange="renderInactivosCard()" checked style="width:auto; margin:0;">
+                        <span>🧪 Ocultar datos de prueba (@example.com, @test.com)</span>
+                    </label>
+                    <button class="btn btn-sm" onclick="renderInactivosCard()">
+                        <i class="fa fa-rotate"></i> Refrescar
+                    </button>
+                </div>
+                <div id="inactivos-list">
+                    <div class="empty-state"><i class="fa fa-spinner fa-spin"></i> Cargando inactivos...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════════ TAB: CONCEPTOS (copiado desde director) ═══════════════ -->
+        <div id="tab-conceptos" class="tab-panel">
+            <div class="desktop-only-msg">
+                <i class="fa fa-desktop"></i>
+                <strong>Solo en computadora</strong>
+                Los conceptos PECVS se ven mejor en pantalla grande.<br>Abrí esta sección desde tu PC.
+            </div>
+            <div class="card" style="padding: 25px;">
+                <h2 style="font-family:'Playfair Display',serif; color:var(--gold); border-bottom: 2px solid var(--gold); padding-bottom:10px; margin-bottom:25px; font-size:22px;">
+                    <i class="fa fa-graduation-cap-solid"></i> EL EMBUDO DE EFECTIVIDAD
+                </h2>
+
+                <div class="conceptos-grid">
+                    <!-- DEFINICIONES P/E/C/V — desktop: columna izq · mobile: order 2 -->
+                    <div class="conceptos-defs">
+                        <div style="margin-bottom:24px;">
+                            <strong style="color:var(--gold); font-size:1.2em;">P - Personas contactadas en el día</strong><br>
+                            <p style="font-size:14px; margin:8px 0; color:var(--white);"><strong>Definición:</strong> Personas buscadas activamente que tienes enfrente y a las que les podrías vender. El conteo empieza desde el primer contacto.</p>
+                            <em style="color:var(--slate); font-size:12px;">¿Qué mide?: Prospección y abordaje inicial.</em>
+                        </div>
+                        <div style="margin-bottom:24px;">
+                            <strong style="color:var(--gold); font-size:1.2em;">E - Entrevistas</strong><br>
+                            <p style="font-size:14px; margin:8px 0; color:var(--white);"><strong>Definición:</strong> Registra si lograste comunicar el valor del producto según sus necesidades. Si hubo negativa antes de esto, no cuenta.</p>
+                            <em style="color:var(--slate); font-size:12px;">¿Qué mide?: Tu habilidad para detectar necesidades y comunicar valor.</em>
+                        </div>
+                        <div style="margin-bottom:24px;">
+                            <strong style="color:var(--gold); font-size:1.2em;">C - Cotizaciones</strong><br>
+                            <p style="font-size:14px; margin:8px 0; color:var(--white);"><strong>Definición:</strong> Personas a las que entregaste una propuesta formal con costos; si entregaste múltiples propuestas a una misma persona, cuenta como una sola cotización.</p>
+                            <em style="color:var(--slate); font-size:12px;">¿Qué mide?: Tu capacidad para presentar y hablar de PRECIOS.</em>
+                        </div>
+                        <div style="margin-bottom:24px;">
+                            <strong style="color:var(--gold); font-size:1.2em;">V - Personas a las que se les vendió</strong><br>
+                            <p style="font-size:14px; margin:8px 0; color:var(--white);"><strong>Definición:</strong> Personas (almas) a las que vendiste el producto. Si a una misma persona le vendiste varias solicitudes/pólizas, sigue contando como <strong>1 sola V</strong>. La diferencia con S (Solicitudes) es exactamente esa: V cuenta personas, S cuenta pólizas individuales.</p>
+                            <em style="color:var(--slate); font-size:12px;">¿Qué mide?: Efectividad de venta por persona (no por póliza).</em>
+                        </div>
+                    </div>
+
+                    <!-- VISUAL EMBUDO — desktop: columna der sticky · mobile: order 1 -->
+                    <div class="conceptos-visual" style="background: rgba(255,255,255,0.03); border-radius:15px; padding:25px; text-align:center; border: 1px solid rgba(255,255,255,0.05); height: fit-content; position: sticky; top: 20px;">
+                        <h2 style="font-family:'Playfair Display',serif; color:var(--white); margin-top:0;">EMBUDO MATEMÁTICO</h2>
+                        <div style="background:var(--gold); color:var(--bg); padding:4px 15px; border-radius:20px; display:inline-block; font-weight:bold; font-size:12px; margin-bottom:30px;">
+                            REGLA: P ≥ E ≥ C ≥ V
+                        </div>
+                        <div style="display: flex; flex-direction: column; align-items: center; gap: 4px; max-width: 250px; margin: 0 auto; width:100%;">
+                            <div style="width: 100%; height: 45px; background: #3b82f6; clip-path: polygon(0% 0%, 100% 0%, 95% 100%, 5% 100%); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; color:white;">P - Contactos</div>
+                            <div style="width: 100%; height: 45px; background: #06b6d4; clip-path: polygon(5% 0%, 95% 0%, 90% 100%, 10% 100%); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; color:white;">E - Entrevistas</div>
+                            <div style="width: 100%; height: 45px; background: #a855f7; clip-path: polygon(10% 0%, 90% 0%, 85% 100%, 15% 100%); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; color:white;">C - Cotizaciones</div>
+                            <div style="width: 100%; height: 50px; background: #10b981; clip-path: polygon(15% 0%, 85% 0%, 80% 100%, 20% 100%); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; color:white;">V - Cierres</div>
+                        </div>
+                        <p style="font-size:13px; color:var(--slate); margin-top:35px; line-height:1.6; text-align:justify; border-top: 1px solid rgba(255,255,255,0.1); padding-top:20px;">
+                            En sentido estricto el número debe ir de mayor a menor (o como máximo igual) en cada etapa del proceso. Es decir: <strong>nunca puede haber más entrevistas que prospectos contactados</strong>, ni más cotizaciones que entrevistas realizadas, ni más ventas concretadas que cotizaciones.
+                        </p>
+                    </div>
+
+                    <!-- MÉTRICAS DE VOLUMEN Y VALOR (S + $) — desktop: full-width · mobile: order 3 -->
+                    <div class="conceptos-prima">
+                        <h2 style="font-family:'Playfair Display',serif; color:var(--gold); border-bottom: 2px solid var(--gold); padding-bottom:10px; margin:20px 0 25px; font-size:22px;">
+                            <i class="fa fa-chart-line"></i> MÉTRICAS DE VOLUMEN Y VALOR
+                        </h2>
+                        <div style="margin-bottom:24px;">
+                            <strong style="color:var(--gold); font-size:1.2em;">S - Número de solicitudes</strong><br>
+                            <p style="font-size:14px; margin:8px 0; color:var(--white);"><strong>Definición:</strong> Suma de solicitudes vendidas. Aquí SÍ se cuentan todas las solicitudes, sin importar si le vendiste a la misma persona varias solicitudes.</p>
+                            <em style="color:var(--slate); font-size:12px;">¿Qué mide?: Productividad.</em>
+                            <p style="font-size:13px; margin:12px 0 0; color:var(--slate); line-height:1.55;"><strong style="color:var(--gold);">Nota:</strong> ¿Por qué hay dos conceptos similares? Cierres (V) y Solicitudes (S). Hay veces que a una misma persona se le vende 2 solicitudes, incremento e inclusión. Con el fin de que las solicitudes no rompan el embudo matemático que te permite medir tu eficiencia en cada etapa del proceso de la venta, se crearon esos dos conceptos.</p>
+                        </div>
+                        <div style="margin-bottom:24px;">
+                            <strong style="color:var(--gold); font-size:1.2em;">$ - Prima total</strong><br>
+                            <p style="font-size:14px; margin:8px 0; color:var(--white);"><strong>Definición:</strong> Suma de la Prima Neta total vendida en el día.</p>
+                            <em style="color:var(--slate); font-size:12px;">¿Qué mide?: Rentabilidad financiera.</em>
+                        </div>
+                    </div>
+
+                    <!-- TOTOPOS — desktop: full-width abajo · mobile: order 4 -->
+                    <div class="conceptos-totopos" style="padding:18px; background:rgba(212,175,55,0.06); border:1px solid rgba(212,175,55,0.2); border-radius:12px;">
+                        <div style="display:flex; align-items:center; gap:14px; margin-bottom:10px;">
+                            <svg style="width:64px; height:64px; flex-shrink:0;"><use href="#totopo"/></svg>
+                            <strong style="color:var(--gold); font-size:1.3em;">Totopos — tu moneda</strong>
+                        </div>
+                        <p style="font-size:14px; margin:8px 0; color:var(--white);"><strong>¿Qué son?</strong> Moneda virtual que ganás por reportar tu día. Premian la disciplina y la honestidad — no importa si el día estuvo bueno o flojo, lo que cuenta es que reportes.</p>
+                        <p style="font-size:14px; margin:14px 0 6px; color:var(--white);"><strong>¿Cómo ganártelos?</strong> Ganás <strong>10 totopos por cada día reportado</strong> en cualquiera de estos dos casos:</p>
+                        <ul style="font-size:13px; margin:6px 0 8px 22px; color:var(--white); line-height:1.7; padding-left:0;">
+                            <li>🟢 <strong>Semáforo en verde</strong> — el embudo cumple las reglas.</li>
+                            <li>🌙 <strong>"Sin intento de venta hoy"</strong> — declaraste honestamente que no hubo actividad. Cuenta igual. La opción aparece cuando todos los valores están en 0.</li>
+                        </ul>
+                        <p style="font-size:13px; margin:8px 0; color:var(--slate);">Si el semáforo queda en 🔴 (datos rotos / embudo inválido) ese día <strong>no</strong> genera totopos. El corte se hace a las <strong>12:00 AM</strong> — durante el día puedes corregir las veces que quieras.</p>
+                        <p style="font-size:13px; margin:8px 0; color:var(--slate);">⚠️ <strong style="color:var(--gold);">Auditoría:</strong> Se revisará al final del mes si lo reportado coincide con lo ingresado.</p>
+                        <p style="font-size:14px; margin:12px 0 8px; color:var(--white);"><strong>¿Para qué sirven?</strong> Los canjéas en la pestaña <strong>Tienda</strong> por premios que el director pone disponibles.</p>
+                        <em style="color:var(--slate); font-size:12px;">¿Qué miden?: Tu compromiso y consistencia con el reporte diario.</em>
+                    </div>
+                </div>
+            </div>
+        </div><!-- /tab-conceptos -->
 
     <!-- UPDATE AVAILABLE MODAL -->
     <!-- BOTTOM NAV (mobile only, estilo iOS/Android) — 5 tabs supradirector -->
