@@ -6747,7 +6747,7 @@
 
         // ═══════════════ JS: BITACORA (copiado desde director) ═══════════════
         // ─── BITÁCORA VIEW (solo lectura) ─────────────────────────────────────────────
-        let bitCurrentWeeks = [];
+        // (bitCurrentWeeks ya está declarado arriba en superdirector — no re-declarar.)
 
         // state.agents = array de objetos { name, email, teamCode, ... }.
         // Para el refactor, usamos a.email como agentId (clave única).
@@ -7269,8 +7269,8 @@
 
         // ═══════════════ JS: GESTION (copiado desde director) ═══════════════
         // ─── GESTIÓN DE EQUIPO ───────────────────────────────────────────────────────
-        let pendingUsers = [];
-        let currentApproval = null;
+        // (pendingUsers y currentApproval ya están declarados arriba en el código
+        // original del superdirector — no re-declarar acá para evitar SyntaxError.)
 
         function startListeningPending() {
             const pendQ = collection(db, "pending_users");
