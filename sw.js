@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pecvs-superdirector-v0.9.0';
+const CACHE_NAME = 'pecvs-superdirector-v0.10.0';
 const ASSETS = ['./', './index.html', './manifest.json', './icon.svg'];
 
 self.addEventListener('install', (event) => {
@@ -21,6 +21,7 @@ self.addEventListener('activate', (event) => {
 // del PWA se queda en pantalla hasta que el browser aborta solo (30-120s).
 // Con 4s servimos cache y la app abre al instante; la próxima carga trae fresh.
 const NAV_TIMEOUT_MS = 4000;
+const LAST_RESORT_MS = 15000;
 
 self.addEventListener('fetch', (event) => {
     if (event.request.method !== 'GET') return;
@@ -45,7 +46,11 @@ self.addEventListener('fetch', (event) => {
                 return res;
             } catch (err) {
                 if (cached) return cached;
-                return fetch(event.request);
+                return await Promise.race([
+                    fetch(event.request),
+                    new Promise((_, reject) =>
+                        setTimeout(() => reject(new Error('sw-last-resort-timeout')), LAST_RESORT_MS))
+                ]);
             }
         })());
     } else {
