@@ -1,4 +1,4 @@
-const CACHE_NAME = 'pecvs-superdirector-v0.8.0';
+const CACHE_NAME = 'pecvs-superdirector-v0.9.0';
 const ASSETS = ['./', './index.html', './manifest.json', './icon.svg'];
 
 self.addEventListener('install', (event) => {
@@ -34,7 +34,7 @@ self.addEventListener('fetch', (event) => {
 
             try {
                 const res = await Promise.race([
-                    fetch(event.request),
+                    fetch(event.request, { cache: 'no-store' }),
                     new Promise((_, reject) =>
                         setTimeout(() => reject(new Error('sw-nav-timeout')), NAV_TIMEOUT_MS))
                 ]);
